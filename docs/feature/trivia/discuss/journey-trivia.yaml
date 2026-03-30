@@ -1,0 +1,399 @@
+# Journey Schema -- Trivia Game
+# Feature ID: trivia
+# Phase: DISCUSS -- Phase 2 (Journey Design)
+# Date: 2026-03-29
+# Covers: all three interfaces (/host, /play, /display) as a unified journey
+
+meta:
+  feature_id: trivia
+  version: "1.0"
+  personas:
+    - id: marcus
+      name: Marcus Okafor
+      role: quizmaster
+      interface: /host
+    - id: priya
+      name: Priya Nair
+      role: team_captain
+      interface: /play
+    - id: jordan
+      name: Jordan Kim
+      role: casual_player
+      interface: /play
+
+# ---------------------------------------------------------------------------
+# GAME STATE MACHINE
+# ---------------------------------------------------------------------------
+game_states:
+  - id: LOBBY
+    label: Pre-game lobby
+    description: Game session created, waiting for teams to join
+    transitions:
+      - trigger: quizmaster_starts_game
+        to: ROUND_ACTIVE
+    visible_on:
+      host: lobby_screen
+      play: waiting_screen
+      display: holding_screen
+
+  - id: ROUND_ACTIVE
+    label: Round in progress
+    description: Questions are being revealed one at a time
+    transitions:
+      - trigger: all_questions_revealed
+        to: ROUND_ENDED
+      - trigger: quizmaster_ends_round_early
+        to: ROUND_ENDED
+    visible_on:
+      host: reveal_panel
+      play: answer_form
+      display: question_view
+
+  - id: ROUND_ENDED
+    label: Awaiting submissions
+    description: All questions revealed; waiting for teams to submit
+    transitions:
+      - trigger: all_teams_submitted
+        to: SCORING
+      - trigger: quizmaster_override
+        to: SCORING
+    visible_on:
+      host: submission_status
+      play: submit_review
+      display: waiting_for_submissions
+
+  - id: SCORING
+    label: Quizmaster scoring
+    description: Quizmaster marks answers correct/incorrect
+    transitions:
+      - trigger: all_answers_marked
+        to: CEREMONY
+    visible_on:
+      host: scoring_interface
+      play: locked_waiting
+      display: waiting_for_ceremony
+
+  - id: CEREMONY
+    label: Answer reveal ceremony
+    description: Quizmaster steps through correct answers on public display
+    transitions:
+      - trigger: ceremony_complete_more_rounds
+        to: ROUND_SCORES
+      - trigger: ceremony_complete_last_round
+        to: GAME_OVER
+    visible_on:
+      host: ceremony_control
+      play: ceremony_view
+      display: answer_reveal
+
+  - id: ROUND_SCORES
+    label: Showing round scores
+    description: Brief scores display between rounds
+    transitions:
+      - trigger: quizmaster_starts_next_round
+        to: ROUND_ACTIVE
+    visible_on:
+      host: scores_panel
+      play: scores_view
+      display: scores_screen
+
+  - id: GAME_OVER
+    label: Final scores
+    description: Game complete; final standings displayed
+    transitions: []
+    visible_on:
+      host: final_scores
+      play: final_scores
+      display: final_scores_screen
+
+# ---------------------------------------------------------------------------
+# JOURNEY STEPS BY INTERFACE
+# ---------------------------------------------------------------------------
+
+host_journey:
+  - step: H1
+    name: Load Quiz
+    state_precondition: none
+    actor: marcus
+    action: Uploads or provides path to YAML quiz file
+    system_response: Validates YAML structure and all referenced media files
+    success_outcome: Game session created; lobby screen shown with player URL and display URL
+    failure_outcome: Validation error screen with field-level error messages
+    emotional_state: anxious_hopeful
+    shared_artifacts_produced:
+      - game_session_id
+      - quiz_content_tree
+
+  - step: H2
+    name: Share URLs / Wait in Lobby
+    state_precondition: LOBBY
+    actor: marcus
+    action: Copies player URL and display URL; waits while teams join
+    system_response: Live list of connected teams updates as teams join
+    success_outcome: All expected teams are visible; Marcus clicks "Start Game"
+    failure_outcome: No teams connected -- warning prompt shown
+    emotional_state: monitoring_ready
+
+  - step: H3
+    name: Reveal Questions
+    state_precondition: ROUND_ACTIVE
+    actor: marcus
+    action: Clicks "Reveal next question" button at chosen pace
+    system_response: Next question pushed to /play and /display; question counter increments
+    success_outcome: All questions revealed; "End Round" option becomes prominent
+    failure_outcome: n/a (reveal is always available)
+    emotional_state: in_control_performing
+    shared_artifacts_consumed:
+      - quiz_content_tree
+
+  - step: H4
+    name: Monitor Submissions
+    state_precondition: ROUND_ENDED
+    actor: marcus
+    action: Views submission status panel; waits for all teams
+    system_response: Status updates in real-time as teams submit
+    success_outcome: All teams submitted; "Open Scoring" button activates
+    failure_outcome: One or more teams not submitting -- override available after timeout
+    emotional_state: patient_monitoring
+
+  - step: H5
+    name: Score Answers
+    state_precondition: SCORING
+    actor: marcus
+    action: Reviews each question; marks each team's answer correct or incorrect
+    system_response: Running scores auto-calculate; progress tracked per question
+    success_outcome: All answers marked; scores finalized; "Start Ceremony" available
+    failure_outcome: n/a (can save partial scores and return)
+    emotional_state: focused_efficient
+    shared_artifacts_consumed:
+      - submitted_answers
+
+  - step: H6
+    name: Run Answer Ceremony
+    state_precondition: CEREMONY
+    actor: marcus
+    action: Clicks through each answer; optionally announces which teams got it right
+    system_response: /display advances to show question + correct answer per click
+    success_outcome: All answers revealed; display shows round scores; option to start next round
+    failure_outcome: n/a
+    emotional_state: showman_delight
+
+play_journey:
+  - step: P1
+    name: Join Game
+    state_precondition: LOBBY (or any state for late joiners)
+    actor: priya_or_jordan
+    action: Opens /play URL; enters team name (first visit) or auto-rejoins (return visit)
+    system_response:
+      first_visit: Team registered; localStorage token written; lobby shown
+      return_visit: Token matched; team identity restored; current state synced
+    success_outcome: Player sees lobby or current game state; team name confirmed
+    failure_outcome:
+      - Team name already taken -- reprompt
+      - No active game -- "Waiting for game to start"
+    emotional_state: uncertain_then_included
+    shared_artifacts_produced:
+      - team_identity_token (localStorage)
+      - team_registration (server)
+
+  - step: P2
+    name: See Revealed Questions
+    state_precondition: ROUND_ACTIVE
+    actor: priya
+    action: Waits; sees questions appear as quizmaster reveals them
+    system_response: New questions appended to answer form in real-time
+    success_outcome: Player sees question immediately on reveal; answer field ready
+    failure_outcome: Connection lost -- reconnect banner; state restored on reconnect
+    emotional_state: engaged_curious
+    shared_artifacts_consumed:
+      - revealed_questions (from /host)
+
+  - step: P3
+    name: Enter and Edit Answers
+    state_precondition: ROUND_ACTIVE
+    actor: priya
+    action: Types answers into form fields; edits at any time before submission
+    system_response: Answers saved locally (localStorage) and synced to server draft
+    success_outcome: All revealed questions have answers; edits preserved across refreshes
+    failure_outcome: Blank answers allowed (intentional); UI warns but does not block
+    emotional_state: focused_collaborative
+    shared_artifacts_produced:
+      - draft_answers (per team, per round)
+
+  - step: P4
+    name: Review and Submit
+    state_precondition: ROUND_ENDED
+    actor: priya
+    action: Reviews all answers on summary screen; clicks "Submit Answers"
+    system_response:
+      - Pre-submit: shows all answers; flags blanks
+      - Confirmation dialog: warns submission is final
+      - On confirm: answers locked; submission registered on server
+    success_outcome: Submission confirmed; waiting screen shown; other team status visible
+    failure_outcome:
+      - Player cancels and edits -- returns to answer form
+      - Late submission (after scoring starts) -- quizmaster notified; override available
+    emotional_state: certain_committed
+    shared_artifacts_produced:
+      - submitted_answers (final, locked)
+
+  - step: P5
+    name: Watch Ceremony
+    state_precondition: CEREMONY
+    actor: priya_and_jordan
+    action: Passive viewing of answer reveal
+    system_response: Ceremony view shows current question + correct answer as quizmaster advances
+    success_outcome: Team sees how they did per question; scores shown at ceremony end
+    failure_outcome: WebSocket drops -- reconnect restores to current ceremony position
+    emotional_state: anticipation_delight
+
+display_journey:
+  - step: D1
+    name: Holding Screen
+    state_precondition: LOBBY
+    content: Quiz title + join URL + "starting soon" message
+    driven_by: automatic on game session creation
+    audience: room_participants
+
+  - step: D2
+    name: Show Current Question
+    state_precondition: ROUND_ACTIVE
+    content: Round name + question number + question text + media (if applicable) + choices (if MC)
+    driven_by: quizmaster reveal action (H3)
+    audience: room_participants
+    note: Updates in real-time; only current question shown (not all revealed)
+
+  - step: D3
+    name: Waiting for Submissions
+    state_precondition: ROUND_ENDED
+    content: "Submitting answers..." + count of teams submitted vs total
+    driven_by: automatic on round_ended event
+    audience: room_participants
+
+  - step: D4
+    name: Answer Reveal (Ceremony)
+    state_precondition: CEREMONY
+    content: Question text + media (if applicable) + correct answer (after quizmaster advances)
+    driven_by: quizmaster ceremony step advance (H6)
+    audience: room_participants
+    note: Answers revealed one at a time; which teams got it right NOT shown (quizmaster announces verbally)
+
+  - step: D5
+    name: Round Scores
+    state_precondition: ROUND_SCORES
+    content: Ranked team list + round points + running total
+    driven_by: automatic on ceremony_complete
+    audience: room_participants
+
+  - step: D6
+    name: Final Scores
+    state_precondition: GAME_OVER
+    content: Final standings + winner highlight
+    driven_by: automatic on game_over event
+    audience: room_participants
+
+# ---------------------------------------------------------------------------
+# SHARED ARTIFACTS REGISTRY
+# ---------------------------------------------------------------------------
+shared_artifacts:
+  - id: game_session_id
+    description: Unique identifier for the current game session
+    produced_by: /host (H1 -- YAML load)
+    consumed_by:
+      - /play (P1 -- join)
+      - /display (D1 -- holding screen)
+    persistence: server in-memory; localStorage on player devices
+
+  - id: quiz_content_tree
+    description: Parsed and validated quiz structure from YAML (rounds, questions, answers, media refs)
+    produced_by: /host (H1 -- YAML load)
+    consumed_by:
+      - /host (H3 -- reveal)
+      - /display (D2 -- question view)
+      - /play (P2 -- question receipt)
+    persistence: server in-memory; media served as static files
+
+  - id: team_registry
+    description: Map of team name -> team ID -> connected devices
+    produced_by: /play (P1 -- join)
+    consumed_by:
+      - /host (H2 -- lobby list, H5 -- scoring)
+      - /display (D3 -- submission count)
+    persistence: server in-memory; team token in player localStorage
+
+  - id: revealed_question_set
+    description: Ordered list of questions revealed so far in current round
+    produced_by: /host (H3 -- reveal)
+    consumed_by:
+      - /play (P2, P3 -- answer form)
+      - /display (D2 -- question view, shows latest only)
+    persistence: server in-memory; synced to all clients via WebSocket
+
+  - id: draft_answers
+    description: Team's current (unsaved) answers per question per round
+    produced_by: /play (P3 -- answer entry)
+    consumed_by:
+      - /play (P4 -- review screen)
+    persistence: player localStorage + server draft store
+
+  - id: submitted_answers
+    description: Final locked answers per team per round
+    produced_by: /play (P4 -- submission)
+    consumed_by:
+      - /host (H5 -- scoring interface)
+    persistence: server in-memory
+
+  - id: scored_answers
+    description: Each submitted answer with correct/incorrect mark and assigned points
+    produced_by: /host (H5 -- scoring)
+    consumed_by:
+      - /host (ceremony control, scores panel)
+      - /display (D5 -- round scores)
+      - /play (P5 -- ceremony view)
+    persistence: server in-memory
+
+# ---------------------------------------------------------------------------
+# INTEGRATION CHECKPOINTS
+# ---------------------------------------------------------------------------
+integration_checkpoints:
+  - id: IC-01
+    name: Game Start Sync
+    description: When Marcus clicks "Start Game", all connected /play and /display clients must receive the game start event within 500ms
+    parties: [/host, /play, /display]
+    risk: medium
+    mitigation: WebSocket broadcast; clients poll on reconnect
+
+  - id: IC-02
+    name: Question Reveal Sync
+    description: When Marcus reveals a question, /play clients receive new question immediately; /display updates to show new current question
+    parties: [/host, /play, /display]
+    risk: medium
+    mitigation: WebSocket broadcast per reveal action
+
+  - id: IC-03
+    name: Answer Submission Registration
+    description: When Priya submits answers, submission is persisted server-side and /host submission status updates in real-time
+    parties: [/play, /host]
+    risk: high
+    mitigation: Server-side acknowledgment required; client shows spinner until confirmed; retry on network failure
+
+  - id: IC-04
+    name: Scoring to Display
+    description: When Marcus completes scoring and starts ceremony, /display transitions to ceremony mode and /play shows ceremony view
+    parties: [/host, /play, /display]
+    risk: low
+    mitigation: State machine transition broadcast
+
+  - id: IC-05
+    name: Player Reconnection
+    description: When a player refreshes or reconnects, server must restore their team identity and current game state
+    parties: [/play, server]
+    risk: high
+    mitigation: localStorage token; server maintains per-team state keyed by token; reconnect re-syncs full current state
+
+  - id: IC-06
+    name: Late Joiner Catch-Up
+    description: A player opening /play after the game has started must receive the current round, all revealed questions for the round, and their team's draft answers if any
+    parties: [/play, server]
+    risk: medium
+    mitigation: Full state snapshot on initial connect
