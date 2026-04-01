@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/cucumber/godog v0.15.0
 	nhooyr.io/websocket v1.8.11
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

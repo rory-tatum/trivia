@@ -1,0 +1,5 @@
+title: "Quiz"
+rounds:
+  - questions:
+      - text: "A question?"
+        answer: "An answer"

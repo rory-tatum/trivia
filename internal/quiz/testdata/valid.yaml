@@ -1,0 +1,12 @@
+title: "Science Quiz Night"
+rounds:
+  - name: "Round 1: Chemistry"
+    questions:
+      - text: "What is the chemical symbol for water?"
+        answer: "H2O"
+      - text: "What is the atomic number of carbon?"
+        answer: "6"
+  - name: "Round 2: Physics"
+    questions:
+      - text: "What is the speed of light in vacuum?"
+        answer: "299792458 m/s"
