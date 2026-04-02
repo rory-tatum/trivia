@@ -4,6 +4,7 @@ package game
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -179,6 +180,13 @@ func (g *GameSession) EndGame() error {
 func (g *GameSession) RegisterTeam(name string) (Team, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	// Reject duplicate names (case-insensitive).
+	nameLower := strings.ToLower(name)
+	for _, t := range g.teams {
+		if strings.ToLower(t.Name) == nameLower {
+			return Team{}, fmt.Errorf("team name %q already taken", name)
+		}
+	}
 	g.nextTeamSeq++
 	id := fmt.Sprintf("team-%d", g.nextTeamSeq)
 	token := fmt.Sprintf("tok-%s-%d", id, g.nextTeamSeq)
@@ -283,4 +291,44 @@ func (g *GameSession) BeginScoring() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.transition(StateScoring)
+}
+
+// CeremonyQuestion returns the QuestionPublic for a ceremony question.
+// Safe for the handler package: never exposes QuestionFull or QuizFull.
+func (g *GameSession) CeremonyQuestion(roundIndex, questionIndex int) QuestionPublic {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+		return QuestionPublic{}
+	}
+	round := g.quiz.Rounds[roundIndex]
+	if questionIndex < 0 || questionIndex >= len(round.Questions) {
+		return QuestionPublic{}
+	}
+	pub := StripAnswers(round.Questions[questionIndex])
+	pub.Index = questionIndex
+	return pub
+}
+
+// CeremonyAnswer returns the answer string for a question in the current round.
+// This is safe to expose from the game package: it returns a plain string,
+// never QuestionFull or QuizFull.
+func (g *GameSession) CeremonyAnswer(roundIndex, questionIndex int) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+		return ""
+	}
+	round := g.quiz.Rounds[roundIndex]
+	if questionIndex < 0 || questionIndex >= len(round.Questions) {
+		return ""
+	}
+	return round.Questions[questionIndex].Answer
+}
+
+// FinalScores returns the cumulative scores across all rounds.
+func (g *GameSession) FinalScores() map[string]int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.totals.AllTotals()
 }

@@ -33,9 +33,9 @@ type QuizLoadedMeta struct {
 // HostHandler handles the quizmaster WebSocket connection.
 // Auth guard is applied at the router level before reaching this handler.
 type HostHandler struct {
-	hub       *hub.Hub
+	hub        *hub.Hub
 	quizLoader QuizLoader
-	baseURL   string
+	baseURL    string
 }
 
 // NewHostHandler creates a HostHandler wired to the given hub, quiz loader, and base URL.
@@ -66,7 +66,7 @@ func (hh *HostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // readLoop reads incoming WebSocket messages from the host and dispatches them.
-func (hh *HostHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *hub.Client, session game.GamePort) {
+func (hh *HostHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *hub.Client, session *game.GameSession) {
 	for {
 		var raw map[string]json.RawMessage
 		if err := wsjson.Read(ctx, conn, &raw); err != nil {
@@ -82,6 +82,24 @@ func (hh *HostHandler) readLoop(ctx context.Context, conn *websocket.Conn, clien
 		switch event {
 		case "host_load_quiz":
 			hh.handleLoadQuiz(ctx, conn, client, session, raw["payload"])
+		case "host_start_round":
+			hh.handleStartRound(ctx, client, session, raw["payload"])
+		case "host_reveal_question":
+			hh.handleRevealQuestion(ctx, client, session, raw["payload"])
+		case "host_end_round":
+			hh.handleEndRound(ctx, client, session, raw["payload"])
+		case "host_begin_scoring":
+			hh.handleBeginScoring(ctx, client, session, raw["payload"])
+		case "host_mark_answer":
+			hh.handleMarkAnswer(ctx, client, session, raw["payload"])
+		case "host_ceremony_show_question":
+			hh.handleCeremonyShowQuestion(ctx, client, session, raw["payload"])
+		case "host_ceremony_reveal_answer":
+			hh.handleCeremonyRevealAnswer(ctx, client, session, raw["payload"])
+		case "host_publish_scores":
+			hh.handlePublishScores(ctx, client, session, raw["payload"])
+		case "host_end_game":
+			hh.handleEndGame(ctx, client, session)
 		default:
 			errEvent := hub.NewErrorEvent("unknown_event", "unknown event: "+event)
 			if err := hh.hub.Send(client, errEvent); err != nil {
@@ -92,7 +110,7 @@ func (hh *HostHandler) readLoop(ctx context.Context, conn *websocket.Conn, clien
 }
 
 // handleLoadQuiz processes a host_load_quiz event.
-func (hh *HostHandler) handleLoadQuiz(ctx context.Context, conn *websocket.Conn, client *hub.Client, session game.GamePort, payloadRaw json.RawMessage) {
+func (hh *HostHandler) handleLoadQuiz(ctx context.Context, conn *websocket.Conn, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
 	var payload struct {
 		FilePath string `json:"file_path"`
 	}
@@ -119,4 +137,167 @@ func (hh *HostHandler) handleLoadQuiz(ctx context.Context, conn *websocket.Conn,
 	if err := hh.hub.Send(client, response); err != nil {
 		log.Printf("host: send quiz_loaded: %v", err)
 	}
+}
+
+func (hh *HostHandler) handleStartRound(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		RoundIndex int `json:"round_index"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_start_round requires round_index"))
+		return
+	}
+	if err := session.StartRound(payload.RoundIndex); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("start_round_failed", err.Error()))
+		return
+	}
+	evt := hub.NewRoundStartedEvent(payload.RoundIndex)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
+func (hh *HostHandler) handleRevealQuestion(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		RoundIndex    int `json:"round_index"`
+		QuestionIndex int `json:"question_index"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_reveal_question requires round_index and question_index"))
+		return
+	}
+	if err := session.RevealQuestion(payload.RoundIndex, payload.QuestionIndex); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("reveal_failed", err.Error()))
+		return
+	}
+	// Get the just-revealed question (last in the revealed list).
+	revealed := session.RevealedQuestions()
+	if len(revealed) == 0 {
+		return
+	}
+	q := revealed[len(revealed)-1]
+	evt := hub.NewQuestionRevealedEvent(q)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
+func (hh *HostHandler) handleEndRound(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		RoundIndex int `json:"round_index"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_end_round requires round_index"))
+		return
+	}
+	if err := session.ForceEndRound(payload.RoundIndex); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("end_round_failed", err.Error()))
+	}
+}
+
+func (hh *HostHandler) handleBeginScoring(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		RoundIndex int `json:"round_index"`
+	}
+	_ = json.Unmarshal(payloadRaw, &payload)
+
+	if err := session.BeginScoring(); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("begin_scoring_failed", err.Error()))
+		return
+	}
+	evt := hub.NewScoringOpenedEvent(payload.RoundIndex)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
+func (hh *HostHandler) handleMarkAnswer(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		TeamID        string `json:"team_id"`
+		RoundIndex    int    `json:"round_index"`
+		QuestionIndex int    `json:"question_index"`
+		Verdict       string `json:"verdict"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil || payload.TeamID == "" {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_mark_answer requires team_id and verdict"))
+		return
+	}
+	verdict := game.Verdict(payload.Verdict)
+	if err := session.MarkAnswerVerdict(payload.TeamID, payload.RoundIndex, payload.QuestionIndex, verdict); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("mark_answer_failed", err.Error()))
+	}
+}
+
+func (hh *HostHandler) handleCeremonyShowQuestion(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		QuestionIndex int `json:"question_index"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_ceremony_show_question requires question_index"))
+		return
+	}
+
+	roundIndex := session.CurrentRoundIndex()
+
+	// Transition to ceremony on first call (questionIndex == 0), or advance.
+	if payload.QuestionIndex == 0 {
+		if err := session.StartCeremony(); err != nil {
+			_ = hh.hub.Send(client, hub.NewErrorEvent("ceremony_failed", err.Error()))
+			return
+		}
+	} else {
+		if err := session.AdvanceCeremony(payload.QuestionIndex); err != nil {
+			_ = hh.hub.Send(client, hub.NewErrorEvent("ceremony_failed", err.Error()))
+			return
+		}
+	}
+
+	q := session.CeremonyQuestion(roundIndex, payload.QuestionIndex)
+	evt := hub.NewCeremonyQuestionShownEvent(payload.QuestionIndex, q)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+}
+
+func (hh *HostHandler) handleCeremonyRevealAnswer(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		QuestionIndex int `json:"question_index"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("bad_request", "host_ceremony_reveal_answer requires question_index"))
+		return
+	}
+
+	roundIndex := session.CurrentRoundIndex()
+	answer := session.CeremonyAnswer(roundIndex, payload.QuestionIndex)
+	evt := hub.NewCeremonyAnswerRevealedEvent(payload.QuestionIndex, answer)
+	// Answer revealed only to display room (not play room — boundary rule).
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
+func (hh *HostHandler) handlePublishScores(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
+	var payload struct {
+		RoundIndex int `json:"round_index"`
+	}
+	_ = json.Unmarshal(payloadRaw, &payload)
+
+	if err := session.PublishRoundScores(payload.RoundIndex); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("publish_scores_failed", err.Error()))
+		return
+	}
+	scores := session.RoundScores(payload.RoundIndex)
+	evt := hub.NewRoundScoresPublishedEvent(payload.RoundIndex, scores)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
+func (hh *HostHandler) handleEndGame(_ context.Context, client *hub.Client, session *game.GameSession) {
+	if err := session.EndGame(); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("end_game_failed", err.Error()))
+		return
+	}
+	finalScores := session.FinalScores()
+	evt := hub.NewGameOverEvent(finalScores)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
 }
