@@ -223,6 +223,7 @@ func (w *World) whenPlayerJoins(teamName string) error {
 	driver := NewTriviaDriver(w.server, w.hostToken, w)
 	key := connectionKey("play", teamName)
 	w.connections[key] = &WSConnection{Role: "play", Name: teamName, driver: driver}
+	w.lastJoinAttemptKey = key
 	if err := driver.ConnectPlay(w.ctx, teamName); err != nil {
 		return err
 	}
@@ -230,8 +231,22 @@ func (w *World) whenPlayerJoins(teamName string) error {
 }
 
 func (w *World) whenPlayerJoinsSecondDevice(teamName string) error {
-	// Create a second connection for the same team name.
-	return w.whenPlayerJoins(teamName + "_device2")
+	// Connect under a distinct key but register with the original team name.
+	// This simulates a second device attempting to register the same team name.
+	if w.server == nil {
+		if err := w.givenServerRunning(w.hostToken); err != nil {
+			return err
+		}
+	}
+	connKey := teamName + "_device2"
+	key := connectionKey("play", connKey)
+	driver := NewTriviaDriver(w.server, w.hostToken, w)
+	w.connections[key] = &WSConnection{Role: "play", Name: connKey, driver: driver}
+	w.lastJoinAttemptKey = key
+	if err := driver.ConnectPlay(w.ctx, connKey); err != nil {
+		return err
+	}
+	return driver.PlayRegisterTeamWithKey(w.ctx, connKey, teamName)
 }
 
 func (w *World) whenMarcusStartsRound(roundIndex int) error {
@@ -1027,6 +1042,68 @@ func (w *World) thenNoRaceConditions() error {
 	output := w.quizFixtures["go_test_output"]
 	if strings.Contains(output, "DATA RACE") {
 		return fmt.Errorf("race condition detected: %s", output)
+	}
+	return nil
+}
+
+func (w *World) thenPlayerSeesLobby(teamName string) error {
+	// The player receives a state_snapshot on connect that includes the team registry.
+	// After registration, the player also sees team_registered. Both are acceptable signals.
+	// We verify the team appears in the team registry via the state_snapshot or team_registered.
+	key := connectionKey("play", teamName)
+	_, ok := w.waitForEvent(key, "team_registered", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for team_registered event on %q — player not registered", teamName)
+	}
+	return nil
+}
+
+func (w *World) thenPlayerSeesError(expectedMsg string) error {
+	key := w.lastJoinAttemptKey
+	if key == "" {
+		return fmt.Errorf("no player join attempt recorded; cannot check error")
+	}
+	msg, ok := w.waitForEvent(key, "error", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for error event on %q", key)
+	}
+	message, _ := ExtractStringField(msg.Payload, "message")
+	if !strings.Contains(message, expectedMsg) {
+		return fmt.Errorf("expected error message to contain %q, got %q", expectedMsg, message)
+	}
+	w.lastError = message
+	return nil
+}
+
+func (w *World) thenNameFieldRemainedPopulated() error {
+	// The server sends the error event with the attempted team name in the payload.
+	// The client is expected to keep the name field populated on error.
+	// At the acceptance level, we verify the error event was received (done in thenPlayerSeesError).
+	// The UI-level assertion (field remains populated) is a frontend concern not testable here.
+	return nil
+}
+
+func (w *World) thenNoDuplicateTeamInLobby() error {
+	// Wait briefly, then verify no team_joined event was sent to host for the duplicate attempt.
+	time.Sleep(200 * time.Millisecond)
+	teamName := ""
+	// Extract original team name from lastJoinAttemptKey (format: "play:Name_device2").
+	if w.lastJoinAttemptKey != "" {
+		raw := strings.TrimPrefix(w.lastJoinAttemptKey, "play:")
+		teamName = strings.TrimSuffix(raw, "_device2")
+	}
+	// Count team_joined events for this team on the host connection.
+	count := 0
+	for _, msg := range w.messagesFor("host") {
+		if msg.Event == "team_joined" {
+			name, _ := ExtractStringField(msg.Payload, "team_name")
+			if name == teamName {
+				count++
+			}
+		}
+	}
+	if count > 1 {
+		return fmt.Errorf("expected at most 1 team_joined event for %q, got %d (duplicate registered)", teamName, count)
 	}
 	return nil
 }

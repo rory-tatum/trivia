@@ -200,7 +200,7 @@ func (g *GameSession) RegisterTeam(name string) (Team, error) {
 	nameLower := strings.ToLower(name)
 	for _, t := range g.teams {
 		if strings.ToLower(t.Name) == nameLower {
-			return Team{}, fmt.Errorf("team name %q already taken", name)
+			return Team{}, fmt.Errorf("That name is taken -- try a different team name")
 		}
 	}
 	g.nextTeamSeq++

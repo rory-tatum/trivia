@@ -271,6 +271,18 @@ func (d *TriviaDriver) PlayRegisterTeam(ctx context.Context, teamName string) er
 	})
 }
 
+// PlayRegisterTeamWithKey sends the team_register event through connection keyed by connKey,
+// but registers with the given teamName in the payload.
+// Use this when the connection key differs from the team name (e.g. second-device tests).
+func (d *TriviaDriver) PlayRegisterTeamWithKey(ctx context.Context, connKey, teamName string) error {
+	return d.SendMessage(ctx, connectionKey("play", connKey), map[string]interface{}{
+		"event": "team_register",
+		"payload": map[string]interface{}{
+			"team_name": teamName,
+		},
+	})
+}
+
 // PlayRejoinTeam sends the team_rejoin event.
 func (d *TriviaDriver) PlayRejoinTeam(ctx context.Context, teamName, teamID, deviceToken string) error {
 	return d.SendMessage(ctx, connectionKey("play", teamName), map[string]interface{}{
