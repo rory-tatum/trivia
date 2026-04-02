@@ -336,6 +336,37 @@ func SimpleQuizYAML(title string, questions []QuizQuestion) string {
 	return b.String()
 }
 
+// MultiRoundQuizYAML generates a YAML quiz with the given number of rounds,
+// distributing totalQuestions evenly across rounds (adding extras to last round).
+func MultiRoundQuizYAML(title string, rounds, totalQuestions int) string {
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "title: %q\n", title)
+	b.WriteString("rounds:\n")
+	perRound := totalQuestions / rounds
+	if perRound < 1 {
+		perRound = 1
+	}
+	q := 0
+	for r := 0; r < rounds; r++ {
+		fmt.Fprintf(b, "  - name: %q\n", fmt.Sprintf("Round %d", r+1))
+		b.WriteString("    questions:\n")
+		count := perRound
+		if r == rounds-1 {
+			// Last round gets remaining questions.
+			count = totalQuestions - q
+			if count < 1 {
+				count = 1
+			}
+		}
+		for i := 0; i < count; i++ {
+			q++
+			fmt.Fprintf(b, "      - text: %q\n", fmt.Sprintf("Question %d?", q))
+			fmt.Fprintf(b, "        answer: %q\n", fmt.Sprintf("Answer %d", q))
+		}
+	}
+	return b.String()
+}
+
 // QuizQuestion is a simple question fixture.
 type QuizQuestion struct {
 	Text   string

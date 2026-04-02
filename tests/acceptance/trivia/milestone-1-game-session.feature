@@ -20,7 +20,6 @@ Feature: Milestone 1 -- Game Session Management
   # US-01: Load YAML Quiz File
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Valid YAML file creates a game session
     When Marcus loads "friday-march-2026.yaml" via the quizmaster interface
     Then Marcus sees "Friday Night Trivia -- March 2026 | 4 rounds | 32 questions"

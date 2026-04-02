@@ -3,6 +3,8 @@
 package game
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -40,6 +42,7 @@ type StateReader interface {
 type GameSession struct {
 	mu sync.RWMutex
 
+	sessionID  string
 	state      GameState
 	quiz       QuizFull
 	quizLoaded bool
@@ -56,9 +59,17 @@ type GameSession struct {
 	nextTeamSeq      int
 }
 
+// newSessionID generates a random 16-character hex session identifier.
+func newSessionID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // NewGameSession creates a new GameSession in the LOBBY state.
 func NewGameSession() *GameSession {
 	return &GameSession{
+		sessionID:      newSessionID(),
 		state:          StateLobby,
 		currentRound:   -1,
 		revealedUpTo:   -1,
@@ -68,6 +79,11 @@ func NewGameSession() *GameSession {
 		roundScoresMap: make(map[int]*RoundScores),
 		totals:         NewTotalScores(),
 	}
+}
+
+// GetSessionID returns the unique identifier for this game session.
+func (g *GameSession) GetSessionID() string {
+	return g.sessionID
 }
 
 // -- GamePort implementation ------------------------------------------------

@@ -25,7 +25,7 @@ func TestAcceptance(t *testing.T) {
 		Options: &godog.Options{
 			Format:   "pretty",
 			Paths:    []string{"../"},
-			Tags:     "~@infrastructure", // infrastructure scenarios require Docker; run separately
+			Tags:     "~@infrastructure && ~@skip", // infrastructure scenarios require Docker; @skip scenarios not yet implemented
 			TestingT: t,
 		},
 	}

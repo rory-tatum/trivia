@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -28,6 +29,8 @@ type QuizLoadedMeta struct {
 	QuestionCount int    `json:"question_count"`
 	PlayerURL     string `json:"player_url"`
 	DisplayURL    string `json:"display_url"`
+	Confirmation  string `json:"confirmation"`
+	SessionID     string `json:"session_id"`
 }
 
 // HostHandler handles the quizmaster WebSocket connection.
@@ -45,6 +48,12 @@ func NewHostHandler(h *hub.Hub, loader QuizLoader, baseURL string) *HostHandler 
 		quizLoader: loader,
 		baseURL:    baseURL,
 	}
+}
+
+// SetBaseURL updates the base URL used to build player and display URLs.
+// Call this after the test server starts to inject the real address.
+func (hh *HostHandler) SetBaseURL(url string) {
+	hh.baseURL = url
 }
 
 // ServeHTTP upgrades the connection to WebSocket, registers the client in RoomHost,
@@ -129,6 +138,13 @@ func (hh *HostHandler) handleLoadQuiz(ctx context.Context, conn *websocket.Conn,
 
 	meta.PlayerURL = hh.baseURL + "/play"
 	meta.DisplayURL = hh.baseURL + "/display"
+	roundWord := "rounds"
+	if meta.RoundCount == 1 {
+		roundWord = "round"
+	}
+	meta.Confirmation = fmt.Sprintf("%s | %d %s | %d questions",
+		meta.Title, meta.RoundCount, roundWord, meta.QuestionCount)
+	meta.SessionID = session.GetSessionID()
 
 	response := hub.ServerEvent{
 		Event:   "quiz_loaded",

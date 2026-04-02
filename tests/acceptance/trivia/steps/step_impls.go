@@ -25,24 +25,24 @@ func (w *World) givenServerRunning(token string) error {
 		return nil // already running
 	}
 	w.hostToken = token
-	// The software-crafter wires the real server here:
-	//   mux := http.NewServeMux()
-	//   app := server.New(config.Config{HostToken: token, QuizDir: quizDir})
-	//   app.Register(mux)
-	//   w.server = httptest.NewServer(mux)
-	return godog.ErrPending
+	w.server = NewTestServer(token)
+	return nil
 }
 
 func (w *World) givenQuizFileExists(filename string, rounds, questions int) error {
-	// Generate a simple quiz YAML fixture with the requested structure.
-	qs := make([]QuizQuestion, questions)
-	for i := 0; i < questions; i++ {
-		qs[i] = QuizQuestion{
-			Text:   fmt.Sprintf("Question %d text?", i+1),
-			Answer: fmt.Sprintf("Answer %d", i+1),
+	// Generate a quiz YAML fixture with the requested rounds and question count.
+	if rounds <= 1 {
+		qs := make([]QuizQuestion, questions)
+		for i := 0; i < questions; i++ {
+			qs[i] = QuizQuestion{
+				Text:   fmt.Sprintf("Question %d text?", i+1),
+				Answer: fmt.Sprintf("Answer %d", i+1),
+			}
 		}
+		w.quizFixtures[filename] = SimpleQuizYAML("Friday Night Trivia -- March 2026", qs)
+	} else {
+		w.quizFixtures[filename] = MultiRoundQuizYAML("Friday Night Trivia -- March 2026", rounds, questions)
 	}
-	w.quizFixtures[filename] = SimpleQuizYAML("Friday Night Trivia -- March 2026", qs)
 	return nil
 }
 
@@ -494,6 +494,19 @@ func (w *World) thenShareableDisplayURLShown() error {
 		return fmt.Errorf("expected display_url in quiz_loaded payload, got empty")
 	}
 	w.lastQuizMeta.DisplayURL = url
+	return nil
+}
+
+func (w *World) thenGameSessionHasUniqueID() error {
+	msg, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for quiz_loaded event")
+	}
+	sessionID, _ := ExtractStringField(msg.Payload, "session_id")
+	if sessionID == "" {
+		return fmt.Errorf("expected non-empty session_id in quiz_loaded payload")
+	}
+	w.gameSessionID = sessionID
 	return nil
 }
 

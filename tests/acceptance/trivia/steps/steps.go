@@ -691,6 +691,16 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.thenShareablePlayerURLShown()
 		})
 
+	sc.Step(`^the panel shows a shareable display screen URL$`,
+		func() error {
+			return w.thenShareableDisplayURLShown()
+		})
+
+	sc.Step(`^the game session has a unique session identifier$`,
+		func() error {
+			return w.thenGameSessionHasUniqueID()
+		})
+
 	sc.Step(`^a team identity token is stored for "([^"]*)"$`,
 		func(teamName string) error {
 			return w.thenTeamTokenStored(teamName)
