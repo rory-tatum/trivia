@@ -226,9 +226,27 @@ func (g *GameSession) RegisterTeam(name string) (Team, error) {
 func (g *GameSession) SubmitAnswers(teamID string, roundIndex int, answers []Submission) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	// Idempotent: if team has already submitted, do not overwrite stored answers.
+	if g.submittedTeams[teamID] {
+		return nil
+	}
 	g.submissions[teamID] = answers
 	g.submittedTeams[teamID] = true
 	return nil
+}
+
+// GetSubmissions returns the stored submissions for a team.
+// Returns nil if the team has not submitted.
+func (g *GameSession) GetSubmissions(teamID string) []Submission {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	subs := g.submissions[teamID]
+	if subs == nil {
+		return nil
+	}
+	result := make([]Submission, len(subs))
+	copy(result, subs)
+	return result
 }
 
 // SaveDraft persists the player's current draft answer for a question.

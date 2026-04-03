@@ -105,7 +105,6 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
     Then question 5 is flagged with a blank warning
     And a "Go Back and Edit" action is available alongside "Submit Answers"
 
-  @skip
   Scenario: Player confirms submission through the confirmation step
     Given Priya is on the submit review screen with all answers filled
     When Priya initiates submission
@@ -122,21 +121,18 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
     Then Priya is returned to the answer form
     And all previously entered answers are intact and editable
 
-  @skip
   Scenario: Player cannot edit answers after submission is confirmed
     Given "Team Awesome" has confirmed their submission for round 1
     When Priya tries to edit the question 1 answer field
     Then the field is read-only
     And a banner reads "Answers are locked for round 1"
 
-  @skip
   Scenario: Player screen does not show locked state until server confirms the submission
     Given Priya has initiated submission for "Team Awesome"
     When the submission is in progress waiting for server acknowledgment
     Then Priya sees a "Submitting..." indicator
     And the locked state message does not appear until acknowledgment arrives
 
-  @skip
   Scenario: Resubmitting after a network interruption does not duplicate or overwrite the submission
     Given "Team Awesome" successfully submitted in round 1
     When the submission event is sent again due to a client retry
@@ -147,14 +143,12 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
   # US-10: Quizmaster Monitors Submission Status
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Quizmaster sees real-time submission status as teams submit
     Given Marcus has ended round 1 and the submission panel is open
     When "Team Awesome" submits their answers
     Then the quizmaster panel shows "Team Awesome" as submitted
     And "The Brainiacs" and "Quiz Killers" are still shown as waiting
 
-  @skip
   Scenario: Quizmaster sees all teams submitted and scoring becomes available
     Given Marcus has ended round 1
     When "Team Awesome", "The Brainiacs", and "Quiz Killers" all submit

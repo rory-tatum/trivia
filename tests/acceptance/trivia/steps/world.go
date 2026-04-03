@@ -48,6 +48,10 @@ type World struct {
 	// Used by thenPlayerSeesError to find the right connection.
 	lastJoinAttemptKey string
 
+	// teamIDs maps team name to the server-assigned team_id (e.g. "team-1").
+	// Populated when team_registered events are received.
+	teamIDs map[string]string
+
 	// gameSessionID is set after a successful quiz load.
 	gameSessionID string
 
@@ -97,6 +101,7 @@ func newWorld() *World {
 		quizFixtures:     make(map[string]string),
 		connections:      make(map[string]*WSConnection),
 		receivedMessages: make(map[string][]WSMessage),
+		teamIDs:          make(map[string]string),
 		ctx:              ctx,
 		cancel:           cancel,
 	}
@@ -124,10 +129,30 @@ func connectionKey(role, name string) string {
 }
 
 // addMessage appends a received message for a connection key (thread-safe).
+// It also captures team_id from team_registered events.
 func (w *World) addMessage(key string, msg WSMessage) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.receivedMessages[key] = append(w.receivedMessages[key], msg)
+	// Capture team_id when a team_registered event arrives on a play connection.
+	if msg.Event == "team_registered" && msg.Payload != nil {
+		teamID, _ := msg.Payload["team_id"].(string)
+		// Derive team name from the connection key ("play:Team Awesome" -> "Team Awesome").
+		if teamID != "" && len(key) > 5 && key[:5] == "play:" {
+			teamName := key[5:]
+			w.teamIDs[teamName] = teamID
+		}
+	}
+}
+
+// teamID returns the server-assigned team_id for a team name, or the name itself as fallback.
+func (w *World) teamID(teamName string) string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if id, ok := w.teamIDs[teamName]; ok {
+		return id
+	}
+	return teamName
 }
 
 // messagesFor returns a snapshot of received messages for a connection key.

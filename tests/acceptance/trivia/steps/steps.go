@@ -363,6 +363,33 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.givenCeremonyAtQuestion(0, qNum-1)
 		})
 
+	// US-09 / US-10: submission step definitions (step 04-02)
+
+	sc.Step(`^Priya is on the submit review screen with all answers filled$`,
+		func() error {
+			return w.givenPriyaOnSubmitReviewScreen()
+		})
+
+	sc.Step(`^"([^"]*)" has confirmed their submission for round (\d+)$`,
+		func(teamName string, roundNum int) error {
+			return w.givenTeamConfirmedSubmission(teamName, roundNum-1)
+		})
+
+	sc.Step(`^"([^"]*)" successfully submitted in round (\d+)$`,
+		func(teamName string, roundNum int) error {
+			return w.givenTeamSuccessfullySubmitted(teamName)
+		})
+
+	sc.Step(`^Priya has initiated submission for "([^"]*)"$`,
+		func(teamName string) error {
+			return w.givenPriyaHasInitiatedSubmission(teamName)
+		})
+
+	sc.Step(`^Marcus has ended round (\d+) and the submission panel is open$`,
+		func(roundNum int) error {
+			return w.givenMarcusEndedRoundAndPanelOpen()
+		})
+
 	// -----------------------------------------------------------------------
 	// When steps -- act
 	// -----------------------------------------------------------------------
@@ -622,6 +649,33 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return nil // state assertion only; submission sent in prior When step
 		})
 
+	// US-09 / US-10: submission When steps (step 04-02)
+
+	sc.Step(`^Priya initiates submission$`,
+		func() error {
+			return w.whenPriyaInitiatesSubmission()
+		})
+
+	sc.Step(`^Priya confirms the submission$`,
+		func() error {
+			return nil // confirmation is a client-side UX step; server already received submit
+		})
+
+	sc.Step(`^Priya tries to edit the question (\d+) answer field$`,
+		func(qNum int) error {
+			return w.whenPriyaTriesToEditField(qNum)
+		})
+
+	sc.Step(`^the submission event is sent again due to a client retry$`,
+		func() error {
+			return w.whenSubmissionEventRetriedByClient()
+		})
+
+	sc.Step(`^"([^"]*)", "([^"]*)", and "([^"]*)" all submit$`,
+		func(t1, t2, t3 string) error {
+			return w.whenAllTeamsSubmit([]string{t1, t2, t3})
+		})
+
 	sc.Step(`^the Docker image build is run$`,
 		func() error {
 			return w.whenDockerBuildRuns()
@@ -704,6 +758,73 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^Marcus sees "([^"]*)" listed as submitted in the quizmaster panel$`,
 		func(teamName string) error {
 			return w.thenMarcusSeesTeamStatus(teamName, "submitted")
+		})
+
+	// US-09 / US-10: submission Then steps (step 04-02)
+
+	sc.Step(`^Priya sees a confirmation asking her to confirm because answers cannot be changed after submission$`,
+		func() error {
+			return w.thenPriyaSeesConfirmation()
+		})
+
+	sc.Step(`^the server acknowledges the submission for "([^"]*)"$`,
+		func(teamName string) error {
+			return w.thenServerAcknowledgesSubmission(teamName)
+		})
+
+	sc.Step(`^Priya sees "Your answers are locked in"$`,
+		func() error {
+			return w.thenPriyaSeesLockedIn()
+		})
+
+	sc.Step(`^the field is read-only$`,
+		func() error {
+			return w.thenFieldIsReadOnly()
+		})
+
+	sc.Step(`^a banner reads "([^"]*)"$`,
+		func(text string) error {
+			return w.thenBannerReads(text)
+		})
+
+	sc.Step(`^Priya sees a "([^"]*)" indicator$`,
+		func(_ string) error {
+			return w.thenPriyaSeesSubmittingIndicator()
+		})
+
+	sc.Step(`^the locked state message does not appear until acknowledgment arrives$`,
+		func() error {
+			return w.thenLockedStateNotShownUntilAck()
+		})
+
+	sc.Step(`^the server re-sends the acknowledgment to the client$`,
+		func() error {
+			return w.thenServerResendsAck()
+		})
+
+	sc.Step(`^"([^"]*)"'s round (\d+) answers remain unchanged$`,
+		func(_ string, _ int) error {
+			return w.thenAnswersRemainUnchanged()
+		})
+
+	sc.Step(`^the quizmaster panel shows "([^"]*)" as submitted$`,
+		func(teamName string) error {
+			return w.thenQuizmasterPanelShowsTeamAsSubmitted(teamName)
+		})
+
+	sc.Step(`^"([^"]*)" and "([^"]*)" are still shown as waiting$`,
+		func(t1, t2 string) error {
+			return w.thenTeamsStillWaiting(t1, t2)
+		})
+
+	sc.Step(`^the quizmaster panel shows all (\d+) teams as submitted$`,
+		func(count int) error {
+			return w.thenQuizmasterPanelShowsAllTeamsSubmitted(count)
+		})
+
+	sc.Step(`^the "([^"]*)" action becomes available$`,
+		func(_ string) error {
+			return w.thenOpenScoringActionAvailable()
 		})
 
 	sc.Step(`^Marcus sees (\d+) round and (\d+) questions$`,

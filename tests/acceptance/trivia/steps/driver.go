@@ -307,12 +307,25 @@ func (d *TriviaDriver) PlayDraftAnswer(ctx context.Context, teamName string, rou
 	})
 }
 
-// PlaySubmitAnswers sends the submit_answers event for a team.
+// PlaySubmitAnswers sends the submit_answers event for a team using team_name as team_id.
+// Deprecated: use PlaySubmitAnswersWithID when team_id is known.
 func (d *TriviaDriver) PlaySubmitAnswers(ctx context.Context, teamName string, roundIndex int, answers []map[string]interface{}) error {
 	return d.SendMessage(ctx, connectionKey("play", teamName), map[string]interface{}{
 		"event": "submit_answers",
 		"payload": map[string]interface{}{
 			"team_name":   teamName,
+			"round_index": roundIndex,
+			"answers":     answers,
+		},
+	})
+}
+
+// PlaySubmitAnswersWithID sends the submit_answers event using the server-assigned team_id.
+func (d *TriviaDriver) PlaySubmitAnswersWithID(ctx context.Context, teamID, teamName string, roundIndex int, answers []map[string]interface{}) error {
+	return d.SendMessage(ctx, connectionKey("play", teamName), map[string]interface{}{
+		"event": "submit_answers",
+		"payload": map[string]interface{}{
+			"team_id":     teamID,
 			"round_index": roundIndex,
 			"answers":     answers,
 		},
