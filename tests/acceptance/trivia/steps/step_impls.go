@@ -75,7 +75,47 @@ func (w *World) givenTeamConnected(teamName string) error {
 			return err
 		}
 	}
+	// Ensure quiz is loaded so the lobby state is meaningful.
+	if err := w.ensureQuizLoaded(); err != nil {
+		return err
+	}
+	// Ensure display is connected so broadcast assertions can be verified.
+	if w.connections["display"] == nil {
+		if err := w.givenDisplayConnected(); err != nil {
+			return err
+		}
+	}
 	return w.whenPlayerJoins(teamName)
+}
+
+// ensureQuizLoaded loads the quiz into the host session if not already done.
+// It is a no-op when no host connection exists, no fixtures are registered, or quiz is already loaded.
+func (w *World) ensureQuizLoaded() error {
+	if w.quizLoaded {
+		return nil
+	}
+	if w.connections["host"] == nil {
+		if err := w.givenMarcusConnectsToHostPanel(); err != nil {
+			return err
+		}
+	}
+	internalKeys := map[string]bool{
+		"QUIZ_DIR_OVERRIDE": true, "last_http_status": true,
+		"last_http_body": true, "docker_build_output": true,
+		"arch_lint_output": true, "tsc_output": true,
+		"go_test_output": true, "server_startup_error": true,
+	}
+	for filename := range w.quizFixtures {
+		if internalKeys[filename] {
+			continue
+		}
+		if err := w.whenMarcusLoadsQuiz(filename); err != nil {
+			return err
+		}
+		w.quizLoaded = true
+		return nil
+	}
+	return nil
 }
 
 func (w *World) givenDisplayConnected() error {
@@ -93,7 +133,18 @@ func (w *World) givenMarcusStartedGame(roundIndex int) error {
 	if err := w.givenMarcusConnectsToHostPanel(); err != nil {
 		return err
 	}
-	return w.whenMarcusStartsRound(roundIndex)
+	// Ensure quiz is loaded before starting a round — StartRound fails otherwise.
+	if err := w.ensureQuizLoaded(); err != nil {
+		return err
+	}
+	if err := w.whenMarcusStartsRound(roundIndex); err != nil {
+		return err
+	}
+	// Wait for the round_started event on the host to confirm the state transition succeeded.
+	if _, ok := w.waitForEvent("host", "round_started", 2*time.Second); !ok {
+		return fmt.Errorf("timed out waiting for round_started confirmation after host_start_round")
+	}
+	return nil
 }
 
 func (w *World) givenQuestionsRevealed(roundIndex, count int) error {
@@ -200,7 +251,11 @@ func (w *World) whenMarcusLoadsQuiz(filename string) error {
 	if err != nil {
 		return err
 	}
-	return driver.HostLoadQuiz(w.ctx, path)
+	if err := driver.HostLoadQuiz(w.ctx, path); err != nil {
+		return err
+	}
+	w.quizLoaded = true
+	return nil
 }
 
 func (w *World) whenMarcusLoadsQuizPath(path string) error {
@@ -1104,6 +1159,86 @@ func (w *World) thenNoDuplicateTeamInLobby() error {
 	}
 	if count > 1 {
 		return fmt.Errorf("expected at most 1 team_joined event for %q, got %d (duplicate registered)", teamName, count)
+	}
+	return nil
+}
+
+// US-03: Start Game Broadcast Then implementations
+
+func (w *World) thenAllThreePlayersReceiveRoundStarted(deadline time.Duration) error {
+	teams := []string{"Team Awesome", "The Brainiacs", "Quiz Killers"}
+	for _, team := range teams {
+		key := connectionKey("play", team)
+		if _, ok := w.waitForEvent(key, "round_started", deadline); !ok {
+			return fmt.Errorf("timed out waiting for round_started on %q within %v", team, deadline)
+		}
+	}
+	return nil
+}
+
+func (w *World) thenEachPlayerSeesRoundActive(roundIndex int) error {
+	teams := []string{"Team Awesome", "The Brainiacs", "Quiz Killers"}
+	for _, team := range teams {
+		key := connectionKey("play", team)
+		msg, ok := w.waitForEvent(key, "round_started", 2*time.Second)
+		if !ok {
+			return fmt.Errorf("timed out waiting for round_started on %q", team)
+		}
+		ri, _ := msg.Payload["round_index"].(float64)
+		if int(ri) != roundIndex {
+			return fmt.Errorf("expected round_index %d for %q, got %g", roundIndex, team, ri)
+		}
+	}
+	return nil
+}
+
+func (w *World) thenDisplayReceivesRoundStarted(deadline time.Duration) error {
+	if _, ok := w.waitForEvent("display", "round_started", deadline); !ok {
+		return fmt.Errorf("timed out waiting for round_started on display within %v", deadline)
+	}
+	return nil
+}
+
+func (w *World) thenLateJoinerSeesRoundActive(teamName string, roundIndex int) error {
+	key := connectionKey("play", teamName)
+	msg, ok := w.waitForEvent(key, "state_snapshot", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for state_snapshot on late joiner %q", teamName)
+	}
+	ri, _ := msg.Payload["current_round"].(float64)
+	if int(ri) != roundIndex {
+		return fmt.Errorf("expected current_round %d in snapshot for %q, got %g", roundIndex, teamName, ri)
+	}
+	state, _ := ExtractStringField(msg.Payload, "state")
+	if state != "ROUND_ACTIVE" {
+		return fmt.Errorf("late joiner %q snapshot state is %q, expected ROUND_ACTIVE", teamName, state)
+	}
+	return nil
+}
+
+func (w *World) thenLateJoinerSeesRevealedQuestion(teamName string, questionIndex int) error {
+	key := connectionKey("play", teamName)
+	msg, ok := w.waitForEvent(key, "state_snapshot", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for state_snapshot for late joiner %q", teamName)
+	}
+	revealed, _ := msg.Payload["revealed_questions"].([]interface{})
+	if len(revealed) < questionIndex+1 {
+		return fmt.Errorf("expected at least %d revealed questions in snapshot for %q, got %d",
+			questionIndex+1, teamName, len(revealed))
+	}
+	return nil
+}
+
+func (w *World) thenLateJoinerNotInLobby(teamName string) error {
+	key := connectionKey("play", teamName)
+	msg, ok := w.waitForEvent(key, "state_snapshot", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for state_snapshot for %q", teamName)
+	}
+	state, _ := ExtractStringField(msg.Payload, "state")
+	if state == "LOBBY" || state == "" {
+		return fmt.Errorf("late joiner %q is in lobby/empty state %q, expected ROUND_ACTIVE", teamName, state)
 	}
 	return nil
 }

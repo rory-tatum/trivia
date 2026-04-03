@@ -35,7 +35,7 @@ func NewTestServer(hostToken string) *httptest.Server {
 	h := hub.NewHub()
 	session := game.NewGameSession()
 	loader := &quizLoaderAdapter{loader: quiz.NewLoader()}
-	hostHandler := handler.NewHostHandler(h, loader, "")
+	hostHandler := handler.NewHostHandler(h, loader, "", session)
 	playHandler := handler.NewPlayHandler(h, session, session)
 	displayHandler := handler.NewDisplayHandler(h, session)
 	authGuard := handler.NewAuthGuard(hostToken)

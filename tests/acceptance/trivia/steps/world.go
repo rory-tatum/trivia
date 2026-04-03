@@ -44,8 +44,15 @@ type World struct {
 	// lastError holds the most recent error message received from the server.
 	lastError string
 
+	// lastJoinAttemptKey is the connection key of the most recently attempted player join.
+	// Used by thenPlayerSeesError to find the right connection.
+	lastJoinAttemptKey string
+
 	// gameSessionID is set after a successful quiz load.
 	gameSessionID string
+
+	// quizLoaded tracks whether the quiz has been loaded into the host session.
+	quizLoaded bool
 
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context

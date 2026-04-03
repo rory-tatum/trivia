@@ -39,14 +39,16 @@ type HostHandler struct {
 	hub        *hub.Hub
 	quizLoader QuizLoader
 	baseURL    string
+	session    *game.GameSession
 }
 
-// NewHostHandler creates a HostHandler wired to the given hub, quiz loader, and base URL.
-func NewHostHandler(h *hub.Hub, loader QuizLoader, baseURL string) *HostHandler {
+// NewHostHandler creates a HostHandler wired to the given hub, quiz loader, base URL, and shared game session.
+func NewHostHandler(h *hub.Hub, loader QuizLoader, baseURL string, session *game.GameSession) *HostHandler {
 	return &HostHandler{
 		hub:        h,
 		quizLoader: loader,
 		baseURL:    baseURL,
+		session:    session,
 	}
 }
 
@@ -70,8 +72,7 @@ func (hh *HostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hh.hub.Register(client)
 	defer hh.hub.Deregister(client)
 
-	session := game.NewGameSession()
-	hh.readLoop(r.Context(), conn, client, session)
+	hh.readLoop(r.Context(), conn, client, hh.session)
 }
 
 // readLoop reads incoming WebSocket messages from the host and dispatches them.

@@ -382,6 +382,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.whenPlayerJoinsSecondDevice(teamName)
 		})
 
+	sc.Step(`^a new player tries to join as "([^"]*)"$`,
+		func(teamName string) error {
+			return w.whenPlayerJoinsSecondDevice(teamName)
+		})
+
 	sc.Step(`^Marcus starts the game$`,
 		func() error {
 			return w.whenMarcusStartsRound(0)
@@ -1064,6 +1069,57 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^no race conditions are detected$`,
 		func() error {
 			return w.thenNoRaceConditions()
+		})
+
+	sc.Step(`^Priya sees the lobby showing "([^"]*)" and other connected teams$`,
+		func(teamName string) error {
+			return w.thenPlayerSeesLobby(teamName)
+		})
+
+	sc.Step(`^that player sees "([^"]*)"$`,
+		func(msg string) error {
+			return w.thenPlayerSeesError(msg)
+		})
+
+	sc.Step(`^the name field remains populated so the player can edit it$`,
+		func() error {
+			return w.thenNameFieldRemainedPopulated()
+		})
+
+	sc.Step(`^no duplicate team entry appears in the lobby$`,
+		func() error {
+			return w.thenNoDuplicateTeamInLobby()
+		})
+
+	// US-03: Start Game Broadcast steps
+	sc.Step(`^all three player connections receive the round started event within (\d+) second$`,
+		func(seconds int) error {
+			return w.thenAllThreePlayersReceiveRoundStarted(time.Duration(seconds) * time.Second)
+		})
+
+	sc.Step(`^each player screen shows round (\d+) is active$`,
+		func(roundNum int) error {
+			return w.thenEachPlayerSeesRoundActive(roundNum - 1)
+		})
+
+	sc.Step(`^the display screen transitions from the waiting state to the question view$`,
+		func() error {
+			return w.thenDisplayReceivesRoundStarted(1 * time.Second)
+		})
+
+	sc.Step(`^"([^"]*)" immediately sees round (\d+) as active$`,
+		func(teamName string, roundNum int) error {
+			return w.thenLateJoinerSeesRoundActive(teamName, roundNum-1)
+		})
+
+	sc.Step(`^"([^"]*)" sees question (\d+) already revealed in their answer form$`,
+		func(teamName string, qNum int) error {
+			return w.thenLateJoinerSeesRevealedQuestion(teamName, qNum-1)
+		})
+
+	sc.Step(`^"([^"]*)" does not see a lobby screen$`,
+		func(teamName string) error {
+			return w.thenLateJoinerNotInLobby(teamName)
 		})
 
 	_ = strings.ToLower // silence unused import

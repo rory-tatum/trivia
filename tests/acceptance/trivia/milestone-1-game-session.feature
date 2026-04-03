@@ -79,7 +79,6 @@ Feature: Milestone 1 -- Game Session Management
   # US-03: Start Game Broadcast
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Starting the game transitions all connected players simultaneously
     Given "Team Awesome", "The Brainiacs", and "Quiz Killers" are connected in the lobby
     When Marcus starts the game via the quizmaster interface
@@ -87,7 +86,6 @@ Feature: Milestone 1 -- Game Session Management
     And each player screen shows round 1 is active
     And the display screen transitions from the waiting state to the question view
 
-  @skip
   Scenario: A player who joins after game start receives the current game state
     Given Marcus has started the game and revealed question 1 in round 1
     When a new player connects and joins as "Late Arrivals"
@@ -106,7 +104,6 @@ Feature: Milestone 1 -- Game Session Management
   # US-04: Player Joins (First Visit)
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Player registers a new team name successfully
     Given Marcus has loaded "friday-march-2026.yaml" and the lobby is open
     When Priya connects to the player interface and joins as "Team Awesome"
@@ -114,7 +111,6 @@ Feature: Milestone 1 -- Game Session Management
     And Priya sees the lobby showing "Team Awesome" and other connected teams
     And Marcus sees "Team Awesome" in his connected teams list
 
-  @skip
   Scenario: Registering a team name that is already taken shows a clear error
     Given "Quiz Killers" is already registered in the lobby
     When another player tries to join as "Quiz Killers" from a different device
@@ -122,7 +118,6 @@ Feature: Milestone 1 -- Game Session Management
     And the name field remains populated so the player can edit it
     And no duplicate team entry appears in the lobby
 
-  @skip
   Scenario: Team name matching is case-insensitive for the uniqueness check
     Given "Team Awesome" is already registered in the lobby
     When a new player tries to join as "team awesome"
