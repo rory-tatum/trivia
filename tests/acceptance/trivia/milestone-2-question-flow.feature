@@ -20,7 +20,6 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
   # US-07: Quizmaster Reveals Questions One at a Time
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Revealing question 1 sends it to all player screens
     Given no questions have been revealed yet
     When Marcus reveals question 1 via the quizmaster interface
@@ -30,7 +29,6 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
     And the display screen shows "What is the capital of France?" as the current question
     And the quizmaster panel shows "1 of 8 revealed"
 
-  @skip
   Scenario: Revealing a second question cumulates on player screens but replaces the display
     Given Marcus has revealed question 1 "What is the capital of France?"
     And Priya has entered "Paris" in the question 1 answer field
@@ -58,14 +56,12 @@ Feature: Milestone 2 -- Question Reveal and Answer Entry
   # US-08: Player Enters and Edits Answers
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Player enters a text answer into a revealed question field
     Given question 1 "What is the capital of France?" has been revealed
     When Priya enters "Paris" in the question 1 answer field
     Then Priya's player screen shows "Paris" in the question 1 field
     And the draft is persisted for "Team Awesome"
 
-  @skip
   Scenario: Player changes an answer after initial entry
     Given Priya has entered "Paris, France" in the question 1 answer field
     When Priya changes the answer to "Paris"

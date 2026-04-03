@@ -193,7 +193,9 @@ func (hh *HostHandler) handleRevealQuestion(_ context.Context, client *hub.Clien
 		return
 	}
 	q := revealed[len(revealed)-1]
-	evt := hub.NewQuestionRevealedEvent(q)
+	totalQuestions := session.Quiz().QuestionCount
+	evt := hub.NewQuestionRevealedEvent(q, len(revealed), totalQuestions)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
 	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
 	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
 }

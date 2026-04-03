@@ -113,9 +113,34 @@ func (ph *PlayHandler) handleTeamRegister(ctx context.Context, conn *websocket.C
 	_ = ph.h.Broadcast(hub.RoomHost, hub.NewTeamJoinedEvent(team.ID, team.Name))
 }
 
-func (ph *PlayHandler) handleDraftAnswer(_ context.Context, _ json.RawMessage) {
-	// Draft answers are fire-and-forget in this implementation.
-	// Future: persist in session for reconnection support.
+func (ph *PlayHandler) handleDraftAnswer(_ context.Context, payloadRaw json.RawMessage) {
+	var payload struct {
+		TeamID        string `json:"team_id"`
+		TeamName      string `json:"team_name"`
+		RoundIndex    int    `json:"round_index"`
+		QuestionIndex int    `json:"question_index"`
+		Answer        string `json:"answer"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		return // malformed payload — fire-and-forget, ignore silently
+	}
+	// Accept team_name as the team identifier when team_id is absent
+	// (the driver sends team_name; the session uses team-N IDs).
+	// We look up the team ID from the registry if team_id is not provided.
+	teamID := payload.TeamID
+	if teamID == "" {
+		// Fall back to locating the team by name.
+		for _, t := range ph.reader.TeamRegistry() {
+			if t.Name == payload.TeamName {
+				teamID = t.ID
+				break
+			}
+		}
+	}
+	if teamID == "" {
+		return // unknown team — silently ignore
+	}
+	_ = ph.session.SaveDraft(teamID, payload.RoundIndex, payload.QuestionIndex, payload.Answer)
 }
 
 func (ph *PlayHandler) handleSubmitAnswers(_ context.Context, conn *websocket.Conn, client *hub.Client, payloadRaw json.RawMessage) {

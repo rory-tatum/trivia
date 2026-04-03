@@ -24,6 +24,7 @@ type GamePort interface {
 	EndGame() error
 	RegisterTeam(name string) (Team, error)
 	SubmitAnswers(teamID string, roundIndex int, answers []Submission) error
+	SaveDraft(teamID string, roundIndex, questionIndex int, answer string) error
 }
 
 // StateReader defines the observable state queries consumed by the hub package.
@@ -35,6 +36,14 @@ type StateReader interface {
 	SubmissionStatus(teamID string) bool
 	RoundScores(roundIndex int) map[string]int
 	Quiz() QuizPublic
+	GetDraft(teamID string, roundIndex, questionIndex int) string
+}
+
+// draftKey is the composite key for a draft answer (teamID + round + question).
+type draftKey struct {
+	teamID        string
+	roundIndex    int
+	questionIndex int
 }
 
 // GameSession is the in-memory implementation of the game domain.
@@ -53,6 +62,7 @@ type GameSession struct {
 	teamOrder        []string
 	submissions      map[string][]Submission // teamID -> submissions
 	submittedTeams   map[string]bool
+	drafts           map[draftKey]string // teamID+round+question -> draft answer text
 	roundScoresMap   map[int]*RoundScores
 	totals           *TotalScores
 	ceremonyQuestion int
@@ -76,6 +86,7 @@ func NewGameSession() *GameSession {
 		teams:          make(map[string]Team),
 		submissions:    make(map[string][]Submission),
 		submittedTeams: make(map[string]bool),
+		drafts:         make(map[draftKey]string),
 		roundScoresMap: make(map[int]*RoundScores),
 		totals:         NewTotalScores(),
 	}
@@ -220,6 +231,15 @@ func (g *GameSession) SubmitAnswers(teamID string, roundIndex int, answers []Sub
 	return nil
 }
 
+// SaveDraft persists the player's current draft answer for a question.
+// Overwrites any previous draft for the same team/round/question.
+func (g *GameSession) SaveDraft(teamID string, roundIndex, questionIndex int, answer string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.drafts[draftKey{teamID: teamID, roundIndex: roundIndex, questionIndex: questionIndex}] = answer
+	return nil
+}
+
 // -- StateReader implementation ---------------------------------------------
 
 func (g *GameSession) CurrentState() GameState {
@@ -273,6 +293,14 @@ func (g *GameSession) RoundScores(roundIndex int) map[string]int {
 		return rs.AllScores()
 	}
 	return map[string]int{}
+}
+
+// GetDraft returns the current draft answer for a team/round/question.
+// Returns empty string if no draft has been saved.
+func (g *GameSession) GetDraft(teamID string, roundIndex, questionIndex int) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.drafts[draftKey{teamID: teamID, roundIndex: roundIndex, questionIndex: questionIndex}]
 }
 
 func (g *GameSession) Quiz() QuizPublic {

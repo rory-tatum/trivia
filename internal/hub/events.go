@@ -34,8 +34,11 @@ type RoundStartedPayload struct {
 }
 
 // QuestionRevealedPayload is broadcast when a question is revealed.
+// RevealedCount and TotalQuestions are included for the quizmaster panel display.
 type QuestionRevealedPayload struct {
-	Question game.QuestionPublic `json:"question"`
+	Question       game.QuestionPublic `json:"question"`
+	RevealedCount  int                 `json:"revealed_count"`
+	TotalQuestions int                 `json:"total_questions"`
 }
 
 // SubmissionReceivedPayload is sent to the host when a team submits answers.
@@ -104,8 +107,12 @@ func NewRoundStartedEvent(roundIndex int) ServerEvent {
 }
 
 // NewQuestionRevealedEvent builds a QuestionRevealedEvent.
-func NewQuestionRevealedEvent(q game.QuestionPublic) ServerEvent {
-	return ServerEvent{Event: "question_revealed", Payload: QuestionRevealedPayload{Question: q}}
+func NewQuestionRevealedEvent(q game.QuestionPublic, revealedCount, totalQuestions int) ServerEvent {
+	return ServerEvent{Event: "question_revealed", Payload: QuestionRevealedPayload{
+		Question:       q,
+		RevealedCount:  revealedCount,
+		TotalQuestions: totalQuestions,
+	}}
 }
 
 // NewSubmissionReceivedEvent builds a SubmissionReceivedEvent.

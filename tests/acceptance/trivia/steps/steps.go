@@ -110,6 +110,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.givenGameSessionLoaded(filename)
 		})
 
+	sc.Step(`^Marcus has loaded "([^"]*)" with (\d+) round of (\d+) text questions$`,
+		func(filename string, rounds, questions int) error {
+			return w.givenMarcusLoadedMilestone2Quiz(filename, rounds, questions)
+		})
+
 	sc.Step(`^Marcus has loaded "([^"]*)" and the lobby is open$`,
 		func(filename string) error {
 			return w.givenGameSessionLoaded(filename)
@@ -189,6 +194,26 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^no questions have been revealed yet$`,
 		func() error {
 			return nil // state already correct after game start
+		})
+
+	sc.Step(`^Marcus has revealed question (\d+) "([^"]*)"$`,
+		func(qNum int, text string) error {
+			return w.givenQuestionRevealedWithText(qNum, text)
+		})
+
+	sc.Step(`^question (\d+) "([^"]*)" has been revealed$`,
+		func(qNum int, text string) error {
+			return w.givenQuestionRevealedWithText(qNum, text)
+		})
+
+	sc.Step(`^Priya has entered "([^"]*)" in the question (\d+) answer field$`,
+		func(answer string, qNum int) error {
+			return w.givenPriyaEnteredInField(answer, qNum)
+		})
+
+	sc.Step(`^Priya has entered "([^"]*)" in the question (\d+) answer field for "([^"]*)"$`,
+		func(answer string, qNum int, teamName string) error {
+			return w.whenPlayerDraftsAnswer(teamName, qNum-1, answer)
 		})
 
 	sc.Step(`^Round (\d+) has ended and all (\d+) questions have been revealed$`,
@@ -407,6 +432,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.whenMarcusRevealsQuestion(0, qNum-1)
 		})
 
+	sc.Step(`^Marcus reveals question (\d+) "([^"]*)"$`,
+		func(qNum int, text string) error {
+			return w.whenMarcusRevealsQuestionWithText(qNum, text)
+		})
+
 	sc.Step(`^Marcus reveals question (\d+) via the quizmaster interface$`,
 		func(qNum int) error {
 			return w.whenMarcusRevealsQuestion(0, qNum-1)
@@ -420,6 +450,16 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^Priya enters "([^"]*)" as her answer to question (\d+)$`,
 		func(answer string, qNum int) error {
 			return w.whenPlayerDraftsAnswer("Team Awesome", qNum-1, answer)
+		})
+
+	sc.Step(`^Priya enters "([^"]*)" in the question (\d+) answer field$`,
+		func(answer string, qNum int) error {
+			return w.whenPriyaEntersInField(answer, qNum)
+		})
+
+	sc.Step(`^Priya changes the answer to "([^"]*)"$`,
+		func(newAnswer string) error {
+			return w.whenPriyaChangesAnswer(newAnswer)
 		})
 
 	sc.Step(`^Marcus ends the round$`,
@@ -754,6 +794,52 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^"([^"]*)"'s player screen shows "([^"]*)"$`,
 		func(teamName, text string) error {
 			return w.thenPlayerSeesText(teamName, text, 2*time.Second)
+		})
+
+	// Variant with apostrophe after closing quote (e.g. "The Brainiacs"' player screen)
+	sc.Step(`^"([^"]*)"' player screen shows "([^"]*)"$`,
+		func(teamName, text string) error {
+			return w.thenPlayerSeesTextOnAnyReveal(teamName, text)
+		})
+
+	sc.Step(`^the display screen shows "([^"]*)" as the current question$`,
+		func(text string) error {
+			return w.thenDisplaySeesCurrentQuestion(text)
+		})
+
+	sc.Step(`^the quizmaster panel shows "(\d+) of (\d+) revealed"$`,
+		func(count, total int) error {
+			return w.thenHostSeesRevealCount(fmt.Sprintf("%d", count), total)
+		})
+
+	sc.Step(`^Priya's player screen shows both question (\d+) and question (\d+)$`,
+		func(q1, q2 int) error {
+			return w.thenPlayerScreenShowsBothQuestions(q1, q2)
+		})
+
+	sc.Step(`^Priya's answer "([^"]*)" for question (\d+) is preserved$`,
+		func(answer string, qNum int) error {
+			return w.thenPriyaAnswerPreserved(answer, qNum)
+		})
+
+	sc.Step(`^the display screen shows only question (\d+) as the current question$`,
+		func(qNum int) error {
+			return w.thenDisplayShowsOnlyQuestion(qNum)
+		})
+
+	sc.Step(`^Priya's player screen shows "([^"]*)" in the question (\d+) field$`,
+		func(answer string, qNum int) error {
+			return w.thenPriyaScreenShowsAnswerInField(answer, qNum)
+		})
+
+	sc.Step(`^the draft is persisted for "([^"]*)"$`,
+		func(teamName string) error {
+			return w.thenDraftPersistedFor(teamName)
+		})
+
+	sc.Step(`^the previous value "([^"]*)" is no longer shown$`,
+		func(oldAnswer string) error {
+			return w.thenPreviousAnswerNotShown(oldAnswer)
 		})
 
 	sc.Step(`^the host interface shows "([^"]*) of (\d+) revealed"$`,
