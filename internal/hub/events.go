@@ -71,6 +71,13 @@ type RoundScoresPayload struct {
 	Scores     map[string]int `json:"scores"`
 }
 
+// ScoreUpdatedPayload is broadcast to the host when a verdict is marked.
+type ScoreUpdatedPayload struct {
+	TeamID       string `json:"team_id"`
+	RoundIndex   int    `json:"round_index"`
+	RunningTotal int    `json:"running_total"`
+}
+
 // GameOverPayload is broadcast when the host ends the game.
 type GameOverPayload struct {
 	FinalScores map[string]int `json:"final_scores"`
@@ -125,6 +132,13 @@ func NewSubmissionReceivedEvent(teamID, teamName string, roundIndex int) ServerE
 // NewScoringOpenedEvent builds a ScoringOpenedEvent.
 func NewScoringOpenedEvent(roundIndex int) ServerEvent {
 	return ServerEvent{Event: "scoring_opened", Payload: ScoringOpenedPayload{RoundIndex: roundIndex}}
+}
+
+// NewScoreUpdatedEvent builds a ScoreUpdatedEvent for the host after a verdict is marked.
+func NewScoreUpdatedEvent(teamID string, roundIndex, runningTotal int) ServerEvent {
+	return ServerEvent{Event: "score_updated", Payload: ScoreUpdatedPayload{
+		TeamID: teamID, RoundIndex: roundIndex, RunningTotal: runningTotal,
+	}}
 }
 
 // NewCeremonyQuestionShownEvent builds a CeremonyQuestionShownEvent.

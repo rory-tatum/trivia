@@ -208,6 +208,16 @@ func (d *TriviaDriver) HostEndRound(ctx context.Context, roundIndex int) error {
 	})
 }
 
+// HostBeginScoring sends the host_begin_scoring event.
+func (d *TriviaDriver) HostBeginScoring(ctx context.Context, roundIndex int) error {
+	return d.SendMessage(ctx, connectionKey("host", ""), map[string]interface{}{
+		"event": "host_begin_scoring",
+		"payload": map[string]interface{}{
+			"round_index": roundIndex,
+		},
+	})
+}
+
 // HostMarkAnswer sends the host_mark_answer event.
 func (d *TriviaDriver) HostMarkAnswer(ctx context.Context, teamID string, roundIndex, questionIndex int, verdict string) error {
 	return d.SendMessage(ctx, connectionKey("host", ""), map[string]interface{}{

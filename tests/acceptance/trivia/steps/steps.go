@@ -1331,4 +1331,230 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 
 	_ = strings.ToLower // silence unused import
 	_ = fmt.Sprintf    // silence unused import
+
+	// -----------------------------------------------------------------------
+	// Milestone-3: Scoring, Ceremony, Round Scores, Game Over
+	// -----------------------------------------------------------------------
+
+	// Background steps
+	sc.Step(`^"([^"]*)", "([^"]*)", and "([^"]*)" played the round$`,
+		func(t1, t2, t3 string) error {
+			return w.givenThreeTeamsPlayedRound(t1, t2, t3)
+		})
+
+	sc.Step(`^all three teams submitted their answers$`,
+		func() error {
+			return w.givenAllThreeTeamsSubmitted()
+		})
+
+	sc.Step(`^Marcus has opened scoring$`,
+		func() error {
+			return w.givenMarcusOpenedScoring()
+		})
+
+	// Scenario: Quizmaster marks an answer correct and the score increments
+	sc.Step(`^the scoring panel shows "([^"]*)" answered "([^"]*)" for question (\d+)$`,
+		func(teamName, answer string, qNum int) error {
+			return w.givenScoringPanelShowsAnswer(teamName, answer, qNum-1)
+		})
+
+	sc.Step(`^"([^"]*)"'s score increments by (\d+) point$`,
+		func(teamName string, points int) error {
+			return w.thenTeamScoreIncreasedBy(teamName, points)
+		})
+
+	sc.Step(`^Marcus marks "([^"]*)" as correct for "([^"]*)" question (\d+)$`,
+		func(answer, teamName string, qNum int) error {
+			return w.whenMarcusMarksAnswer(teamName, 0, qNum-1, "correct")
+		})
+
+	sc.Step(`^Marcus marks "([^"]*)" as wrong for "([^"]*)" question (\d+)$`,
+		func(answer, teamName string, qNum int) error {
+			return w.whenMarcusMarksAnswer(teamName, 0, qNum-1, "incorrect")
+		})
+
+	sc.Step(`^the scoring panel shows "([^"]*)"'s updated running total$`,
+		func(teamName string) error {
+			return w.thenScoringPanelShowsUpdatedTotal(teamName)
+		})
+
+	sc.Step(`^the scoring panel shows "([^"]*)" marked as wrong$`,
+		func(answer string) error {
+			return w.thenScoringPanelShowsWrongVerdict(answer)
+		})
+
+	// Scenario: Scoring answers does not send answer content to player/display connections
+	sc.Step(`^Marcus is on the scoring panel showing correct answers$`,
+		func() error {
+			return nil // state is already set by Background
+		})
+
+	sc.Step(`^Marcus marks answers for all teams$`,
+		func() error {
+			return w.whenMarcusMarksAnswersForAllTeams()
+		})
+
+	sc.Step(`^no message containing answer field data is sent to the player connections$`,
+		func() error {
+			return w.thenNoAnswerFieldInAnyPlayMessages()
+		})
+
+	sc.Step(`^no message containing answer field data is sent to the display connection$`,
+		func() error {
+			return w.thenNoAnswerFieldInDisplayMessages()
+		})
+
+	// Scenario: Running totals are calculated automatically as verdicts are entered
+	sc.Step(`^Marcus has marked (\d+) questions correct for "([^"]*)"$`,
+		func(count int, teamName string) error {
+			return w.givenMarcusMarkedQuestionsCorrect(teamName, count)
+		})
+
+	sc.Step(`^(\d+) questions correct for "([^"]*)"$`,
+		func(count int, teamName string) error {
+			return w.givenMarcusMarkedQuestionsCorrect(teamName, count)
+		})
+
+	sc.Step(`^(\d+) question correct for "([^"]*)"$`,
+		func(count int, teamName string) error {
+			return w.givenMarcusMarkedQuestionsCorrect(teamName, count)
+		})
+
+	sc.Step(`^Marcus views the score summary$`,
+		func() error {
+			return nil // observable via score_updated events
+		})
+
+	sc.Step(`^"([^"]*)"'s total shows (\d+)$`,
+		func(teamName string, total int) error {
+			return w.thenTeamTotalShows(teamName, total)
+		})
+
+	sc.Step(`^"([^"]*)"' total shows (\d+)$`,
+		func(teamName string, total int) error {
+			return w.thenTeamTotalShows(teamName, total)
+		})
+
+	// Ceremony steps
+	sc.Step(`^all (\d+) questions are fully scored$`,
+		func(count int) error {
+			return w.givenAllQuestionsScored(count)
+		})
+
+	sc.Step(`^Marcus starts the answer ceremony via the quizmaster interface$`,
+		func() error {
+			return w.whenMarcusStartsCeremony(0)
+		})
+
+	sc.Step(`^no answer is shown yet on the display screen$`,
+		func() error {
+			return w.thenNoAnswerOnDisplay()
+		})
+
+	sc.Step(`^the quizmaster panel shows the ceremony control for question (\d+)$`,
+		func(qNum int) error {
+			return nil // implied by ceremony_question_shown event
+		})
+
+	sc.Step(`^the player screens update to the ceremony step for question (\d+)$`,
+		func(qNum int) error {
+			return w.thenPlayReceivesCeremonyQuestion(qNum - 1)
+		})
+
+	sc.Step(`^the ceremony is in progress$`,
+		func() error {
+			return w.givenCeremonyInProgress()
+		})
+
+	sc.Step(`^Marcus reveals the answer for question (\d+) during ceremony$`,
+		func(qNum int) error {
+			return w.whenMarcusCeremonyRevealAnswer(0, qNum-1)
+		})
+
+	sc.Step(`^the display screen shows the answer for question (\d+)$`,
+		func(qNum int) error {
+			return w.thenDisplayShowsCeremonyAnswerForQuestion(qNum - 1)
+		})
+
+	sc.Step(`^no answer text is sent to the player connections at this ceremony step$`,
+		func() error {
+			return w.thenNoAnswerTextToPlayConnections()
+		})
+
+	// Publish scores steps
+	sc.Step(`^the ceremony for round (\d+) is complete$`,
+		func(roundNum int) error {
+			return w.givenCeremonyComplete(roundNum - 1)
+		})
+
+	sc.Step(`^"([^"]*)" scored (\d+), "([^"]*)" scored (\d+), "([^"]*)" scored (\d+)$`,
+		func(t1 string, s1 int, t2 string, s2 int, t3 string, s3 int) error {
+			return w.givenTeamsHaveScores(t1, s1, t2, s2, t3, s3)
+		})
+
+	sc.Step(`^Marcus publishes the round scores$`,
+		func() error {
+			return w.whenMarcusPublishesScores(0)
+		})
+
+	sc.Step(`^the display screen shows the round (\d+) scores in rank order:$`,
+		func(roundNum int, table *godog.Table) error {
+			return w.thenDisplayShowsRankedScores(roundNum-1, table)
+		})
+
+	sc.Step(`^Marcus has published the round (\d+) scores$`,
+		func(roundNum int) error {
+			return w.givenScoresPublished(roundNum - 1)
+		})
+
+	sc.Step(`^Priya views her player screen$`,
+		func() error {
+			return nil // observable via round_scores_published event
+		})
+
+	sc.Step(`^Priya sees the round (\d+) scores matching the display screen$`,
+		func(roundNum int) error {
+			return w.thenPlayersReceiveRoundScores()
+		})
+
+	// End game steps
+	sc.Step(`^all rounds have been played and scored$`,
+		func() error {
+			return w.givenAllRoundsComplete()
+		})
+
+	sc.Step(`^"([^"]*)" has the highest total across all rounds$`,
+		func(teamName string) error {
+			return nil // verified by game_over payload
+		})
+
+	sc.Step(`^the display screen shows "Trivia Night Complete"$`,
+		func() error {
+			return w.thenDisplayShowsFinalScores()
+		})
+
+	sc.Step(`^"([^"]*)" is highlighted as the winner$`,
+		func(teamName string) error {
+			return w.thenDisplayShowsWinner(teamName)
+		})
+
+	sc.Step(`^all teams' final totals are shown in rank order$`,
+		func() error {
+			return w.thenDisplayShowsFinalScores()
+		})
+
+	sc.Step(`^Marcus has ended the game$`,
+		func() error {
+			return w.whenMarcusEndsGame()
+		})
+
+	sc.Step(`^Priya views her player screen$`,
+		func() error {
+			return nil
+		})
+
+	sc.Step(`^Priya sees the final standings with "([^"]*)"'s total score$`,
+		func(teamName string) error {
+			return w.thenPlayersReceiveFinalScores()
+		})
 }

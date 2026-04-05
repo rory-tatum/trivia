@@ -313,6 +313,17 @@ func (g *GameSession) RoundScores(roundIndex int) map[string]int {
 	return map[string]int{}
 }
 
+// TeamRunningTotal returns the sum of a team's scores across all scored rounds so far.
+func (g *GameSession) TeamRunningTotal(teamID string) int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	total := 0
+	for _, rs := range g.roundScoresMap {
+		total += rs.TeamScore(teamID)
+	}
+	return total
+}
+
 // GetDraft returns the current draft answer for a team/round/question.
 // Returns empty string if no draft has been saved.
 func (g *GameSession) GetDraft(teamID string, roundIndex, questionIndex int) string {

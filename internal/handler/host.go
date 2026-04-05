@@ -243,7 +243,11 @@ func (hh *HostHandler) handleMarkAnswer(_ context.Context, client *hub.Client, s
 	verdict := game.Verdict(payload.Verdict)
 	if err := session.MarkAnswerVerdict(payload.TeamID, payload.RoundIndex, payload.QuestionIndex, verdict); err != nil {
 		_ = hh.hub.Send(client, hub.NewErrorEvent("mark_answer_failed", err.Error()))
+		return
 	}
+	runningTotal := session.TeamRunningTotal(payload.TeamID)
+	evt := hub.NewScoreUpdatedEvent(payload.TeamID, payload.RoundIndex, runningTotal)
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
 }
 
 func (hh *HostHandler) handleCeremonyShowQuestion(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {

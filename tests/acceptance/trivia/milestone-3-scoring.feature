@@ -30,7 +30,6 @@ Feature: Milestone 3 -- Scoring, Ceremony, and Round Scores
     And Marcus sees "The Brainiacs" answered "Paris"
     And Marcus sees "Quiz Killers" answered "Lyon"
 
-  @skip
   Scenario: Quizmaster marks an answer correct and the score increments
     Given the scoring panel shows "Team Awesome" answered "paris" for question 1
     When Marcus marks "paris" as correct for "Team Awesome" question 1
