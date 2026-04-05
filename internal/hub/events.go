@@ -15,11 +15,12 @@ type ServerEvent struct {
 
 // StateSnapshotPayload carries the full current game state for a newly connecting client.
 type StateSnapshotPayload struct {
-	State            game.GameState        `json:"state"`
-	Quiz             game.QuizPublic       `json:"quiz,omitempty"`
-	Teams            []game.Team           `json:"teams"`
-	CurrentRound     int                   `json:"current_round"`
+	State             game.GameState        `json:"state"`
+	Quiz              game.QuizPublic       `json:"quiz,omitempty"`
+	Teams             []game.Team           `json:"teams"`
+	CurrentRound      int                   `json:"current_round"`
 	RevealedQuestions []game.QuestionPublic `json:"revealed_questions"`
+	DraftAnswers      []game.DraftAnswer    `json:"draft_answers,omitempty"`
 }
 
 // TeamJoinedPayload is broadcast when a new team registers.

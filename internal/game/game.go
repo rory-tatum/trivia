@@ -25,6 +25,7 @@ type GamePort interface {
 	RegisterTeam(name string) (Team, error)
 	SubmitAnswers(teamID string, roundIndex int, answers []Submission) error
 	SaveDraft(teamID string, roundIndex, questionIndex int, answer string) error
+	ValidateTeamToken(teamID, deviceToken string) bool
 }
 
 // StateReader defines the observable state queries consumed by the hub package.
@@ -37,6 +38,7 @@ type StateReader interface {
 	RoundScores(roundIndex int) map[string]int
 	Quiz() QuizPublic
 	GetDraft(teamID string, roundIndex, questionIndex int) string
+	GetAllDrafts(teamID string) []DraftAnswer
 }
 
 // draftKey is the composite key for a draft answer (teamID + round + question).
@@ -330,6 +332,34 @@ func (g *GameSession) GetDraft(teamID string, roundIndex, questionIndex int) str
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.drafts[draftKey{teamID: teamID, roundIndex: roundIndex, questionIndex: questionIndex}]
+}
+
+// GetAllDrafts returns all draft answers saved by the given team.
+func (g *GameSession) GetAllDrafts(teamID string) []DraftAnswer {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	var result []DraftAnswer
+	for k, answer := range g.drafts {
+		if k.teamID == teamID {
+			result = append(result, DraftAnswer{
+				RoundIndex:    k.roundIndex,
+				QuestionIndex: k.questionIndex,
+				Answer:        answer,
+			})
+		}
+	}
+	return result
+}
+
+// ValidateTeamToken checks whether the provided deviceToken matches the stored token for teamID.
+func (g *GameSession) ValidateTeamToken(teamID, deviceToken string) bool {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	t, ok := g.teams[teamID]
+	if !ok {
+		return false
+	}
+	return t.DeviceToken == deviceToken
 }
 
 func (g *GameSession) Quiz() QuizPublic {

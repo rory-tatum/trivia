@@ -19,3 +19,10 @@ type QuizPublic struct {
 	RoundCount    int    `json:"round_count"`
 	QuestionCount int    `json:"question_count"`
 }
+
+// DraftAnswer is the transport-safe representation of a team's draft answer.
+type DraftAnswer struct {
+	RoundIndex    int    `json:"round_index"`
+	QuestionIndex int    `json:"question_index"`
+	Answer        string `json:"answer"`
+}

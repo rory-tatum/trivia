@@ -68,6 +68,8 @@ func (ph *PlayHandler) readLoop(ctx context.Context, conn *websocket.Conn, clien
 		switch event {
 		case "team_register":
 			ph.handleTeamRegister(ctx, conn, client, raw["payload"])
+		case "team_rejoin":
+			ph.handleTeamRejoin(ctx, client, raw["payload"])
 		case "draft_answer":
 			// Fire-and-forget: store the draft, no response required.
 			ph.handleDraftAnswer(ctx, raw["payload"])
@@ -111,6 +113,34 @@ func (ph *PlayHandler) handleTeamRegister(ctx context.Context, conn *websocket.C
 
 	// Broadcast team_joined to the host room.
 	_ = ph.h.Broadcast(hub.RoomHost, hub.NewTeamJoinedEvent(team.ID, team.Name))
+}
+
+func (ph *PlayHandler) handleTeamRejoin(_ context.Context, client *hub.Client, payloadRaw json.RawMessage) {
+	var payload struct {
+		TeamID      string `json:"team_id"`
+		DeviceToken string `json:"device_token"`
+	}
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil || payload.TeamID == "" || payload.DeviceToken == "" {
+		_ = ph.h.Send(client, hub.NewErrorEvent("bad_request", "team_rejoin requires team_id and device_token"))
+		return
+	}
+
+	if !ph.session.ValidateTeamToken(payload.TeamID, payload.DeviceToken) {
+		_ = ph.h.Send(client, hub.NewErrorEvent("invalid_token", "device token does not match"))
+		return
+	}
+
+	snapshot := hub.NewStateSnapshotEvent(hub.StateSnapshotPayload{
+		State:             ph.reader.CurrentState(),
+		Quiz:              ph.reader.Quiz(),
+		Teams:             ph.reader.TeamRegistry(),
+		CurrentRound:      ph.reader.CurrentRoundIndex(),
+		RevealedQuestions: ph.reader.RevealedQuestions(),
+		DraftAnswers:      ph.reader.GetAllDrafts(payload.TeamID),
+	})
+	if err := ph.h.Send(client, snapshot); err != nil {
+		log.Printf("play: send state_snapshot on rejoin: %v", err)
+	}
 }
 
 func (ph *PlayHandler) handleDraftAnswer(_ context.Context, payloadRaw json.RawMessage) {

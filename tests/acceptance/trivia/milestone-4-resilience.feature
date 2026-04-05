@@ -19,7 +19,6 @@ Feature: Milestone 4 -- Reconnection and Edge Cases
   # Player reconnection (US-05 extended: mid-game reconnect)
   # -------------------------------------------------------------------------
 
-  @skip
   Scenario: Player reconnects after a brief connection loss and sees current state
     Given Priya has entered "Paris" for question 1 and "Mercury" for question 2
     And Priya's player connection is interrupted for 10 seconds
