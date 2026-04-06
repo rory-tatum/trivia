@@ -6,6 +6,21 @@ import (
 	"trivia/internal/game"
 )
 
+// makeMinimalLoadedSession returns a session with a quiz loaded, ready for StartRound.
+func makeMinimalLoadedSession(t *testing.T) *game.GameSession {
+	t.Helper()
+	s := game.NewGameSession()
+	_ = s.Load(game.QuizFull{
+		Title: "Minimal Quiz",
+		Rounds: []game.Round{
+			{Name: "Round 1", Questions: []game.QuestionFull{
+				{Text: "Q1", Answer: "A1"},
+			}},
+		},
+	})
+	return s
+}
+
 // TestValidStateTransitions verifies that the state machine allows all
 // documented valid transitions.
 func TestValidStateTransitions(t *testing.T) {
@@ -27,6 +42,21 @@ func TestValidStateTransitions(t *testing.T) {
 		if err != nil {
 			t.Errorf("expected valid transition %v -> %v, got error: %v", tc.from, tc.to, err)
 		}
+	}
+}
+
+// TestStartRound_UpdatesGameState verifies that a valid transition via StartRound
+// actually persists the new state. This kills the CONDITIONALS_NEGATION mutant on
+// transition() which would skip the g.state = to assignment for valid transitions.
+func TestStartRound_UpdatesGameState(t *testing.T) {
+	s := makeMinimalLoadedSession(t)
+
+	if err := s.StartRound(0); err != nil {
+		t.Fatalf("StartRound failed: %v", err)
+	}
+
+	if got := s.CurrentState(); got != game.StateRoundActive {
+		t.Errorf("expected state %q after StartRound, got %q", game.StateRoundActive, got)
 	}
 }
 
