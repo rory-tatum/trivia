@@ -17,8 +17,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-
-	// TODO: wire handlers, hub, and quiz loader in subsequent steps.
+	_ = mux
 	_ = cfg
 
 	log.Println("starting trivia server on :8080")

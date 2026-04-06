@@ -368,15 +368,21 @@ func (g *GameSession) Quiz() QuizPublic {
 	if !g.quizLoaded {
 		return QuizPublic{}
 	}
+	return QuizPublic{
+		Title:         g.quiz.Title,
+		RoundCount:    len(g.quiz.Rounds),
+		QuestionCount: g.totalQuestionCount(),
+	}
+}
+
+// totalQuestionCount returns the total number of questions across all rounds.
+// Must be called with at least a read lock held.
+func (g *GameSession) totalQuestionCount() int {
 	total := 0
 	for _, r := range g.quiz.Rounds {
 		total += len(r.Questions)
 	}
-	return QuizPublic{
-		Title:         g.quiz.Title,
-		RoundCount:    len(g.quiz.Rounds),
-		QuestionCount: total,
-	}
+	return total
 }
 
 // transition performs a validated state transition.

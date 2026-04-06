@@ -52,6 +52,28 @@ func (ph *PlayHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.readLoop(r.Context(), conn, client)
 }
 
+// teamNameByID looks up the display name for the given team ID in the registry.
+// Returns id itself as a fallback when the team is not found.
+func (ph *PlayHandler) teamNameByID(id string) string {
+	for _, t := range ph.reader.TeamRegistry() {
+		if t.ID == id {
+			return t.Name
+		}
+	}
+	return id
+}
+
+// teamIDByName looks up the team ID for the given display name in the registry.
+// Returns empty string when no team with that name is found.
+func (ph *PlayHandler) teamIDByName(name string) string {
+	for _, t := range ph.reader.TeamRegistry() {
+		if t.Name == name {
+			return t.ID
+		}
+	}
+	return ""
+}
+
 // readLoop reads incoming WebSocket messages from the player and dispatches them.
 func (ph *PlayHandler) readLoop(ctx context.Context, conn *websocket.Conn, client *hub.Client) {
 	for {
@@ -156,16 +178,9 @@ func (ph *PlayHandler) handleDraftAnswer(_ context.Context, payloadRaw json.RawM
 	}
 	// Accept team_name as the team identifier when team_id is absent
 	// (the driver sends team_name; the session uses team-N IDs).
-	// We look up the team ID from the registry if team_id is not provided.
 	teamID := payload.TeamID
 	if teamID == "" {
-		// Fall back to locating the team by name.
-		for _, t := range ph.reader.TeamRegistry() {
-			if t.Name == payload.TeamName {
-				teamID = t.ID
-				break
-			}
-		}
+		teamID = ph.teamIDByName(payload.TeamName)
 	}
 	if teamID == "" {
 		return // unknown team — silently ignore
@@ -209,13 +224,6 @@ func (ph *PlayHandler) handleSubmitAnswers(_ context.Context, conn *websocket.Co
 	}
 
 	// Notify host of received submission.
-	// Team name lookup for host notification.
-	teamName := payload.TeamID // fallback
-	for _, t := range ph.reader.TeamRegistry() {
-		if t.ID == payload.TeamID {
-			teamName = t.Name
-			break
-		}
-	}
+	teamName := ph.teamNameByID(payload.TeamID)
 	_ = ph.h.Broadcast(hub.RoomHost, hub.NewSubmissionReceivedEvent(payload.TeamID, teamName, payload.RoundIndex))
 }

@@ -44,9 +44,9 @@ type QuestionRevealedPayload struct {
 
 // SubmissionReceivedPayload is sent to the host when a team submits answers.
 type SubmissionReceivedPayload struct {
-	TeamID    string `json:"team_id"`
-	TeamName  string `json:"team_name"`
-	RoundIndex int   `json:"round_index"`
+	TeamID     string `json:"team_id"`
+	TeamName   string `json:"team_name"`
+	RoundIndex int    `json:"round_index"`
 }
 
 // ScoringOpenedPayload is broadcast when the host opens scoring.

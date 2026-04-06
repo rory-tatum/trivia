@@ -58,6 +58,14 @@ func (hh *HostHandler) SetBaseURL(url string) {
 	hh.baseURL = url
 }
 
+// broadcastToAll sends evt to the host, play, and display rooms.
+// Errors are silently discarded; individual send failures do not abort delivery.
+func (hh *HostHandler) broadcastToAll(evt interface{}) {
+	_ = hh.hub.Broadcast(hub.RoomHost, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+}
+
 // ServeHTTP upgrades the connection to WebSocket, registers the client in RoomHost,
 // and dispatches incoming host events.
 func (hh *HostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -169,9 +177,7 @@ func (hh *HostHandler) handleStartRound(_ context.Context, client *hub.Client, s
 		return
 	}
 	evt := hub.NewRoundStartedEvent(payload.RoundIndex)
-	_ = hh.hub.Broadcast(hub.RoomHost, evt)
-	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
-	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	hh.broadcastToAll(evt)
 }
 
 func (hh *HostHandler) handleRevealQuestion(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
@@ -195,9 +201,7 @@ func (hh *HostHandler) handleRevealQuestion(_ context.Context, client *hub.Clien
 	q := revealed[len(revealed)-1]
 	totalQuestions := session.Quiz().QuestionCount
 	evt := hub.NewQuestionRevealedEvent(q, len(revealed), totalQuestions)
-	_ = hh.hub.Broadcast(hub.RoomHost, evt)
-	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
-	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	hh.broadcastToAll(evt)
 }
 
 func (hh *HostHandler) handleEndRound(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
@@ -224,9 +228,7 @@ func (hh *HostHandler) handleBeginScoring(_ context.Context, client *hub.Client,
 		return
 	}
 	evt := hub.NewScoringOpenedEvent(payload.RoundIndex)
-	_ = hh.hub.Broadcast(hub.RoomHost, evt)
-	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
-	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	hh.broadcastToAll(evt)
 }
 
 func (hh *HostHandler) handleMarkAnswer(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
@@ -308,9 +310,7 @@ func (hh *HostHandler) handlePublishScores(_ context.Context, client *hub.Client
 	}
 	scores := session.RoundScores(payload.RoundIndex)
 	evt := hub.NewRoundScoresPublishedEvent(payload.RoundIndex, scores)
-	_ = hh.hub.Broadcast(hub.RoomHost, evt)
-	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
-	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	hh.broadcastToAll(evt)
 }
 
 func (hh *HostHandler) handleEndGame(_ context.Context, client *hub.Client, session *game.GameSession) {
@@ -320,7 +320,5 @@ func (hh *HostHandler) handleEndGame(_ context.Context, client *hub.Client, sess
 	}
 	finalScores := session.FinalScores()
 	evt := hub.NewGameOverEvent(finalScores)
-	_ = hh.hub.Broadcast(hub.RoomHost, evt)
-	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
-	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	hh.broadcastToAll(evt)
 }

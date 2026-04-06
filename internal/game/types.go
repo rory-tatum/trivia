@@ -24,8 +24,8 @@ type QuizFull struct {
 
 // Team represents a participating team in a game session.
 type Team struct {
-	ID        string
-	Name      string
+	ID          string
+	Name        string
 	DeviceToken string
 }
 
