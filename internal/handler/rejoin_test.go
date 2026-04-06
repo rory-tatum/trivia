@@ -9,8 +9,6 @@ package handler_test
 import (
 	"testing"
 	"time"
-
-	"trivia/internal/game"
 )
 
 func TestPlayHandler_TeamRejoin_ValidToken_ReturnsSnapshotWithDrafts(t *testing.T) {
@@ -57,12 +55,6 @@ func TestPlayHandler_TeamRejoin_InvalidToken_ReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setup: register team: %v", err)
 	}
-	_ = session.Load(game.QuizFull{
-		Title: "Test",
-		Rounds: []game.Round{
-			{Name: "R1", Questions: []game.QuestionFull{{Text: "Q?", Answer: "A"}}},
-		},
-	})
 	_ = session.StartRound(0)
 
 	conn := dialPlay(t, srv)

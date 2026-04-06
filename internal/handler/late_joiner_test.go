@@ -26,16 +26,7 @@ import (
 func startPlayServerWithStartedGame(t *testing.T) (*httptest.Server, *game.GameSession) {
 	t.Helper()
 	h := hub.NewHub()
-	session := game.NewGameSession()
-	_ = session.Load(game.QuizFull{
-		Title: "Test Quiz",
-		Rounds: []game.Round{
-			{Name: "Round 1", Questions: []game.QuestionFull{
-				{Text: "What is the capital of France?", Answer: "Paris"},
-				{Text: "What color is the sky?", Answer: "Blue"},
-			}},
-		},
-	})
+	session := game.NewLoadedSessionTwoQuestions()
 	if err := session.StartRound(0); err != nil {
 		t.Fatalf("setup: StartRound: %v", err)
 	}

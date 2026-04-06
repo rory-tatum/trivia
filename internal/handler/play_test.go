@@ -27,16 +27,7 @@ import (
 func startPlayServer(t *testing.T) (*httptest.Server, *hub.Hub, *game.GameSession) {
 	t.Helper()
 	h := hub.NewHub()
-	session := game.NewGameSession()
-	// Load a minimal quiz so StartRound works
-	_ = session.Load(game.QuizFull{
-		Title: "Test Quiz",
-		Rounds: []game.Round{
-			{Name: "Round 1", Questions: []game.QuestionFull{
-				{Text: "Q1?", Answer: "A1"},
-			}},
-		},
-	})
+	session := game.NewLoadedSession()
 	ph := handler.NewPlayHandler(h, session, session)
 	srv := httptest.NewServer(ph)
 	t.Cleanup(srv.Close)
