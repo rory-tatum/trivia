@@ -604,6 +604,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.whenHTTPRequest("media:" + filename)
 		})
 
+	sc.Step(`^an HTTP request is made to the root path$`,
+		func() error {
+			return w.whenHTTPRequest("root")
+		})
+
 	sc.Step(`^the server process starts$`,
 		func() error {
 			return w.whenServerStarts()

@@ -1,7 +1,28 @@
 // Package static embeds the compiled frontend assets.
 package static
 
-import "embed"
+import (
+	"embed"
+	"io/fs"
+	"net/http"
+)
 
 //go:embed dist
 var Assets embed.FS
+
+// NewStaticHandler returns an http.Handler that serves the embedded frontend
+// assets. GET / serves dist/index.html; all other paths are served from dist/.
+func NewStaticHandler() http.Handler {
+	distFS, err := fs.Sub(Assets, "dist")
+	if err != nil {
+		panic("static: failed to create sub-filesystem: " + err.Error())
+	}
+	fileServer := http.FileServer(http.FS(distFS))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "" {
+			http.ServeFileFS(w, r, distFS, "index.html")
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
+}

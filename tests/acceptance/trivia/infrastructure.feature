@@ -99,7 +99,6 @@ Feature: Infrastructure -- deployment and CI/CD validation
   # DEC-022: React SPA served from embedded assets (go:embed)
   # -----------------------------------------------------------------------
 
-  @skip
   Scenario: The React application is served from the root path
     Given the server is running
     When an HTTP request is made to the root path

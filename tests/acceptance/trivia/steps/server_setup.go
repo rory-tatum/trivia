@@ -8,6 +8,7 @@ import (
 	"trivia/internal/handler"
 	"trivia/internal/hub"
 	"trivia/internal/quiz"
+	"trivia/internal/static"
 )
 
 // quizLoaderAdapter adapts quiz.Loader to the handler.QuizLoader port,
@@ -41,6 +42,7 @@ func NewTestServer(hostToken string) *httptest.Server {
 	authGuard := handler.NewAuthGuard(hostToken)
 
 	mux := http.NewServeMux()
+	mux.Handle("/", static.NewStaticHandler())
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
 		room := r.URL.Query().Get("room")

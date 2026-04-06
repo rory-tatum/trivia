@@ -386,6 +386,8 @@ func (w *World) whenHTTPRequest(target string) error {
 		url = driver.GetPlayerURL()
 	case target == "display":
 		url = driver.GetDisplayURL()
+	case target == "root":
+		url = w.server.URL + "/"
 	case strings.HasPrefix(target, "media:"):
 		url = w.server.URL + "/media/" + strings.TrimPrefix(target, "media:")
 	default:
