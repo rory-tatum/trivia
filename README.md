@@ -34,10 +34,10 @@ This compiles the TypeScript/React app and writes the output to `internal/static
 ### 2. Build the Go binary
 
 ```sh
-go build -o trivia ./cmd/server
+go build -o trivia_app ./cmd/server
 ```
 
-This produces a single self-contained binary (`trivia`) with the frontend assets embedded.
+This produces a single self-contained binary (`trivia_app`) with the frontend assets embedded.
 
 ---
 
@@ -51,7 +51,7 @@ The server requires two environment variables:
 | `QUIZ_DIR` | Path to the directory containing your YAML quiz files |
 
 ```sh
-HOST_TOKEN=mysecret QUIZ_DIR=/path/to/quizzes ./trivia
+HOST_TOKEN=mysecret QUIZ_DIR=/path/to/quizzes ./trivia_app
 ```
 
 The server listens on port **8080**.
