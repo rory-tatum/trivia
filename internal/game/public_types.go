@@ -26,3 +26,19 @@ type DraftAnswer struct {
 	QuestionIndex int    `json:"question_index"`
 	Answer        string `json:"answer"`
 }
+
+// TeamSubmission holds one team's answer to a question, for the host scoring panel.
+type TeamSubmission struct {
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	Answer   string `json:"answer"`
+}
+
+// ScoringQuestion is the host-only view of a question with all team answers.
+// It intentionally includes the correct answer because only the host receives this.
+type ScoringQuestion struct {
+	QuestionIndex int              `json:"question_index"`
+	Text          string           `json:"text"`
+	CorrectAnswer string           `json:"correct_answer"`
+	Submissions   []TeamSubmission `json:"submissions"`
+}

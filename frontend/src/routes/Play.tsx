@@ -4,7 +4,7 @@ import type { OutgoingMessage } from "../ws/messages";
 
 function getPlayWsUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws`;
+  return `${protocol}//${window.location.host}/ws?room=play`;
 }
 
 export default function Play(): JSX.Element {

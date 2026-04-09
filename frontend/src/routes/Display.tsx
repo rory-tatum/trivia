@@ -4,7 +4,7 @@ import type { OutgoingMessage } from "../ws/messages";
 
 function getDisplayWsUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws`;
+  return `${protocol}//${window.location.host}/ws?room=display`;
 }
 
 export default function Display(): JSX.Element {

@@ -435,6 +435,54 @@ func (g *GameSession) CeremonyAnswer(roundIndex, questionIndex int) string {
 	return round.Questions[questionIndex].Answer
 }
 
+// RoundQuestionCount returns the number of questions in the given round.
+// Returns 0 if the quiz is not loaded or the round index is out of range.
+func (g *GameSession) RoundQuestionCount(roundIndex int) int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+		return 0
+	}
+	return len(g.quiz.Rounds[roundIndex].Questions)
+}
+
+// ScoringData returns the host-only scoring panel data for a round:
+// each question with its correct answer and all team submissions.
+func (g *GameSession) ScoringData(roundIndex int) []ScoringQuestion {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+		return nil
+	}
+	round := g.quiz.Rounds[roundIndex]
+	questions := make([]ScoringQuestion, len(round.Questions))
+	for qi, q := range round.Questions {
+		sq := ScoringQuestion{
+			QuestionIndex: qi,
+			Text:          q.Text,
+			CorrectAnswer: q.Answer,
+			Submissions:   make([]TeamSubmission, 0, len(g.teamOrder)),
+		}
+		for _, teamID := range g.teamOrder {
+			team := g.teams[teamID]
+			answer := ""
+			for _, sub := range g.submissions[teamID] {
+				if sub.RoundIndex == roundIndex && sub.QuestionIndex == qi {
+					answer = sub.Answer
+					break
+				}
+			}
+			sq.Submissions = append(sq.Submissions, TeamSubmission{
+				TeamID:   teamID,
+				TeamName: team.Name,
+				Answer:   answer,
+			})
+		}
+		questions[qi] = sq
+	}
+	return questions
+}
+
 // FinalScores returns the cumulative scores across all rounds.
 func (g *GameSession) FinalScores() map[string]int {
 	g.mu.RLock()

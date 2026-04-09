@@ -176,7 +176,8 @@ func (hh *HostHandler) handleStartRound(_ context.Context, client *hub.Client, s
 		_ = hh.hub.Send(client, hub.NewErrorEvent("start_round_failed", err.Error()))
 		return
 	}
-	evt := hub.NewRoundStartedEvent(payload.RoundIndex)
+	qCount := session.RoundQuestionCount(payload.RoundIndex)
+	evt := hub.NewRoundStartedEvent(payload.RoundIndex, qCount)
 	hh.broadcastToAll(evt)
 }
 
@@ -199,7 +200,7 @@ func (hh *HostHandler) handleRevealQuestion(_ context.Context, client *hub.Clien
 		return
 	}
 	q := revealed[len(revealed)-1]
-	totalQuestions := session.Quiz().QuestionCount
+	totalQuestions := session.RoundQuestionCount(payload.RoundIndex)
 	evt := hub.NewQuestionRevealedEvent(q, len(revealed), totalQuestions)
 	hh.broadcastToAll(evt)
 }
@@ -229,6 +230,12 @@ func (hh *HostHandler) handleBeginScoring(_ context.Context, client *hub.Client,
 	}
 	evt := hub.NewScoringOpenedEvent(payload.RoundIndex)
 	hh.broadcastToAll(evt)
+
+	scoringData := session.ScoringData(payload.RoundIndex)
+	scoringDataEvt := hub.NewScoringDataEvent(payload.RoundIndex, scoringData)
+	if err := hh.hub.Broadcast(hub.RoomHost, scoringDataEvt); err != nil {
+		log.Printf("host: send scoring_data: %v", err)
+	}
 }
 
 func (hh *HostHandler) handleMarkAnswer(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {

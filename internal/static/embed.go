@@ -23,6 +23,14 @@ func NewStaticHandler() http.Handler {
 			http.ServeFileFS(w, r, distFS, "index.html")
 			return
 		}
+		// Try to serve the static asset; if it doesn't exist, fall back to
+		// index.html so client-side routing (BrowserRouter) can take over.
+		f, err := distFS.Open(r.URL.Path[1:])
+		if err != nil {
+			http.ServeFileFS(w, r, distFS, "index.html")
+			return
+		}
+		f.Close()
 		fileServer.ServeHTTP(w, r)
 	})
 }

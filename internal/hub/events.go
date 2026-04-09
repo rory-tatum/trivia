@@ -31,7 +31,8 @@ type TeamJoinedPayload struct {
 
 // RoundStartedPayload is broadcast when the host starts a round.
 type RoundStartedPayload struct {
-	RoundIndex int `json:"round_index"`
+	RoundIndex    int `json:"round_index"`
+	QuestionCount int `json:"question_count"`
 }
 
 // QuestionRevealedPayload is broadcast when a question is revealed.
@@ -52,6 +53,13 @@ type SubmissionReceivedPayload struct {
 // ScoringOpenedPayload is broadcast when the host opens scoring.
 type ScoringOpenedPayload struct {
 	RoundIndex int `json:"round_index"`
+}
+
+// ScoringDataPayload is sent exclusively to the host room when scoring opens.
+// It carries the correct answers and all team submissions for the round.
+type ScoringDataPayload struct {
+	RoundIndex int                  `json:"round_index"`
+	Questions  []game.ScoringQuestion `json:"questions"`
 }
 
 // CeremonyQuestionShownPayload is broadcast when a ceremony question is shown.
@@ -110,8 +118,8 @@ func NewTeamJoinedEvent(teamID, teamName string) ServerEvent {
 }
 
 // NewRoundStartedEvent builds a RoundStartedEvent.
-func NewRoundStartedEvent(roundIndex int) ServerEvent {
-	return ServerEvent{Event: "round_started", Payload: RoundStartedPayload{RoundIndex: roundIndex}}
+func NewRoundStartedEvent(roundIndex, questionCount int) ServerEvent {
+	return ServerEvent{Event: "round_started", Payload: RoundStartedPayload{RoundIndex: roundIndex, QuestionCount: questionCount}}
 }
 
 // NewQuestionRevealedEvent builds a QuestionRevealedEvent.
@@ -133,6 +141,14 @@ func NewSubmissionReceivedEvent(teamID, teamName string, roundIndex int) ServerE
 // NewScoringOpenedEvent builds a ScoringOpenedEvent.
 func NewScoringOpenedEvent(roundIndex int) ServerEvent {
 	return ServerEvent{Event: "scoring_opened", Payload: ScoringOpenedPayload{RoundIndex: roundIndex}}
+}
+
+// NewScoringDataEvent builds a ScoringDataEvent for the host scoring panel.
+func NewScoringDataEvent(roundIndex int, questions []game.ScoringQuestion) ServerEvent {
+	return ServerEvent{Event: "scoring_data", Payload: ScoringDataPayload{
+		RoundIndex: roundIndex,
+		Questions:  questions,
+	}}
 }
 
 // NewScoreUpdatedEvent builds a ScoreUpdatedEvent for the host after a verdict is marked.

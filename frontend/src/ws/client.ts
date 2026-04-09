@@ -1,5 +1,5 @@
 import type { IncomingMessage, OutgoingMessage } from "./messages";
-import { RECONNECT_FAILED } from "./events";
+import { RECONNECT_FAILED, CONNECTED, AUTH_FAILED } from "./events";
 
 // Exponential backoff configuration
 const BACKOFF_BASE_MS = 1000;
@@ -15,6 +15,7 @@ export class WsClient {
   private attempt = 0;
   private backoffMs = BACKOFF_BASE_MS;
   private closed = false;
+  private hasOpened = false;
 
   private messageHandlers: MessageHandler[] = [];
   private eventHandlers: Map<string, EventHandler[]> = new Map();
@@ -25,6 +26,7 @@ export class WsClient {
     this.closed = false;
     this.attempt = 0;
     this.backoffMs = BACKOFF_BASE_MS;
+    this.hasOpened = false;
     this.openSocket();
   }
 
@@ -55,8 +57,10 @@ export class WsClient {
     this.socket = ws;
 
     ws.onopen = () => {
+      this.hasOpened = true;
       this.attempt = 0;
       this.backoffMs = BACKOFF_BASE_MS;
+      this.emit(CONNECTED);
     };
 
     ws.onmessage = (ev: MessageEvent) => {
@@ -70,8 +74,15 @@ export class WsClient {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (ev: CloseEvent) => {
       if (this.closed) return;
+      // Close code 1006 (abnormal) on first attempt without a prior successful open
+      // indicates the server rejected the upgrade (e.g. HTTP 403 for wrong token).
+      // Do not retry — surface the error permanently.
+      if (!this.hasOpened && this.attempt === 0 && ev.code === 1006) {
+        this.emit(AUTH_FAILED);
+        return;
+      }
       this.scheduleReconnect();
     };
 
