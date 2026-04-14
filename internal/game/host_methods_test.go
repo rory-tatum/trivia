@@ -1,6 +1,7 @@
 package game_test
 
 // Tests for host-specific GameSession methods added in the host-ui feature:
+//   - RoundName
 //   - RoundQuestionCount
 //   - ScoringData
 //   - CeremonyQuestion
@@ -31,6 +32,36 @@ func makeHostTestSession(t *testing.T) *game.GameSession {
 		},
 	})
 	return session
+}
+
+// --- RoundName ---
+
+func TestRoundName_ReturnsHumanReadableName(t *testing.T) {
+	session := makeHostTestSession(t)
+
+	if got := session.RoundName(0); got != "Round 1" {
+		t.Errorf("expected round name %q, got %q", "Round 1", got)
+	}
+	if got := session.RoundName(1); got != "Round 2" {
+		t.Errorf("expected round name %q, got %q", "Round 2", got)
+	}
+}
+
+func TestRoundName_OutOfRangeReturnsEmpty(t *testing.T) {
+	session := makeHostTestSession(t)
+
+	for _, idx := range []int{-1, 2, 99} {
+		if got := session.RoundName(idx); got != "" {
+			t.Errorf("expected empty string for out-of-range index %d, got %q", idx, got)
+		}
+	}
+}
+
+func TestRoundName_QuizNotLoadedReturnsEmpty(t *testing.T) {
+	session := game.NewGameSession()
+	if got := session.RoundName(0); got != "" {
+		t.Errorf("expected empty string when quiz not loaded, got %q", got)
+	}
 }
 
 // --- RoundQuestionCount ---
