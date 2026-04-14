@@ -435,6 +435,17 @@ func (g *GameSession) CeremonyAnswer(roundIndex, questionIndex int) string {
 	return round.Questions[questionIndex].Answer
 }
 
+// RoundName returns the human-readable name of the given round.
+// Returns an empty string if the quiz is not loaded or the round index is out of range.
+func (g *GameSession) RoundName(roundIndex int) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+		return ""
+	}
+	return g.quiz.Rounds[roundIndex].Name
+}
+
 // RoundQuestionCount returns the number of questions in the given round.
 // Returns 0 if the quiz is not loaded or the round index is out of range.
 func (g *GameSession) RoundQuestionCount(roundIndex int) int {

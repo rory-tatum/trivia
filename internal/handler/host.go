@@ -177,7 +177,8 @@ func (hh *HostHandler) handleStartRound(_ context.Context, client *hub.Client, s
 		return
 	}
 	qCount := session.RoundQuestionCount(payload.RoundIndex)
-	evt := hub.NewRoundStartedEvent(payload.RoundIndex, qCount)
+	roundName := session.RoundName(payload.RoundIndex)
+	evt := hub.NewRoundStartedEvent(payload.RoundIndex, qCount, roundName)
 	hh.broadcastToAll(evt)
 }
 

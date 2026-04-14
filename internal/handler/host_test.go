@@ -99,6 +99,32 @@ func TestHostHandler_StartRound_PayloadIncludesQuestionCount(t *testing.T) {
 	}
 }
 
+// TestHostHandler_StartRound_PayloadIncludesRoundName verifies that
+// host_start_round broadcasts a round_started event with round_name in the payload.
+func TestHostHandler_StartRound_PayloadIncludesRoundName(t *testing.T) {
+	h := hub.NewHub()
+	session := game.NewLoadedSessionTwoQuestions()
+	hh := handler.NewHostHandler(h, &stubQuizLoader{}, "http://localhost", session)
+	srv := httptest.NewServer(hh)
+	t.Cleanup(srv.Close)
+
+	conn := dialHost(t, srv)
+	sendHostMsg(t, conn, map[string]interface{}{
+		"event":   "host_start_round",
+		"payload": map[string]interface{}{"round_index": 0},
+	})
+
+	msg := readHostEvent(t, conn, 2*time.Second)
+	if msg["event"] != "round_started" {
+		t.Fatalf("expected round_started event, got %v", msg["event"])
+	}
+	payload, _ := msg["payload"].(map[string]interface{})
+	roundName, _ := payload["round_name"].(string)
+	if roundName == "" {
+		t.Errorf("expected non-empty round_name in round_started payload, got %q", roundName)
+	}
+}
+
 // TestHostHandler_BeginScoring_SendsScoringDataToHost verifies that
 // host_begin_scoring causes a scoring_data event to be sent to the host.
 func TestHostHandler_BeginScoring_SendsScoringDataToHost(t *testing.T) {

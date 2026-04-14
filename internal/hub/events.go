@@ -31,8 +31,9 @@ type TeamJoinedPayload struct {
 
 // RoundStartedPayload is broadcast when the host starts a round.
 type RoundStartedPayload struct {
-	RoundIndex    int `json:"round_index"`
-	QuestionCount int `json:"question_count"`
+	RoundIndex    int    `json:"round_index"`
+	QuestionCount int    `json:"question_count"`
+	RoundName     string `json:"round_name"`
 }
 
 // QuestionRevealedPayload is broadcast when a question is revealed.
@@ -118,8 +119,8 @@ func NewTeamJoinedEvent(teamID, teamName string) ServerEvent {
 }
 
 // NewRoundStartedEvent builds a RoundStartedEvent.
-func NewRoundStartedEvent(roundIndex, questionCount int) ServerEvent {
-	return ServerEvent{Event: "round_started", Payload: RoundStartedPayload{RoundIndex: roundIndex, QuestionCount: questionCount}}
+func NewRoundStartedEvent(roundIndex, questionCount int, roundName string) ServerEvent {
+	return ServerEvent{Event: "round_started", Payload: RoundStartedPayload{RoundIndex: roundIndex, QuestionCount: questionCount, RoundName: roundName}}
 }
 
 // NewQuestionRevealedEvent builds a QuestionRevealedEvent.
