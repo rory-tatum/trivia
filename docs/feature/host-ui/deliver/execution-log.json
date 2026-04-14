@@ -134,6 +134,76 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-04-14T05:41:46Z"
+    },
+    {
+      "sid": "02-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T05:41:56Z"
+    },
+    {
+      "sid": "02-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T05:48:28Z"
+    },
+    {
+      "sid": "02-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T05:48:32Z"
+    },
+    {
+      "sid": "02-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: walking skeleton step \u2014 acceptance tests are the primary test, no unit tests required",
+      "t": "2026-04-14T05:48:32Z"
+    },
+    {
+      "sid": "02-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T05:49:53Z"
+    },
+    {
+      "sid": "02-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T05:50:27Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T23:16:24Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-14T23:16:26Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: no vitest/jest framework configured; tsc --noEmit exits 0 with zero errors; all type definitions already present from WS steps",
+      "t": "2026-04-14T23:16:30Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "GREEN",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: all required constants (CONNECTED, AUTH_FAILED, RECONNECT_FAILED, SCORING_DATA) already exported from events.ts; ScoringDataMsg already in OutgoingMessage union in messages.ts; client.ts and Host.tsx use typed constants, no raw string literals; tsc exits 0",
+      "t": "2026-04-14T23:16:34Z"
     }
   ]
 }
