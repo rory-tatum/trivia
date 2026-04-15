@@ -243,9 +243,12 @@ func (w *World) givenAllAnswersMarked(roundIndex int) error {
 		return fmt.Errorf("opening scoring for round %d: %w", roundIndex, err)
 	}
 	driver := w.hostDriver()
-	// Mark all teams' answers for the round (best effort with known team IDs).
+	// Mark all teams' answers for the round using the actual question count from round_started.
+	if w.totalQuestions == 0 {
+		return fmt.Errorf("givenAllAnswersMarked: totalQuestions is 0 — round_started event not received or question_count missing")
+	}
 	for teamName, teamID := range w.teamIDs {
-		for qi := 0; qi < defaultQuestionCount; qi++ {
+		for qi := 0; qi < w.totalQuestions; qi++ {
 			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
 				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
 			}
@@ -694,7 +697,7 @@ func (w *World) thenStartRoundButtonVisible(label string) error {
 		}
 	}
 	if !scoredPrev {
-		return fmt.Errorf("%q button not visible: round_scores_published for round %d not received", label, targetRoundIndex-1)
+		return fmt.Errorf("%q button not visible: round_scores_published for round %d not received", label, int(prevRoundIndex))
 	}
 	// The target round must not have started yet.
 	for _, msg := range w.messagesFor(roleHost) {
@@ -1061,18 +1064,25 @@ func (w *World) thenRunningTotalReflectsCorrectCount(teamName string, count int)
 }
 
 func (w *World) thenRunningTotalUnchanged(teamName string) error {
-	// Observable: score_updated event received for this team with running_total == 0
-	// (no prior correct answers in this scenario, so total is unchanged at 0).
+	// Observable: server sends a score_updated event for wrong verdicts too.
+	// Capture the running_total before the wrong-verdict event arrives, then
+	// wait for a score_updated event and assert the total did not change.
 	teamID := w.teamID(teamName)
+
+	// Snapshot the running_total as it stands before the wrong-verdict event.
+	w.mu.Lock()
+	priorTotal := w.teamRunningTotals[teamID]
+	w.mu.Unlock()
+
 	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
 		total, found := w.latestRunningTotal(teamID)
 		if !found {
-			return false, fmt.Errorf("score_updated event not received for team %q", teamName)
+			return false, fmt.Errorf("no score_updated event received for team %q", teamName)
 		}
-		if int(total) == 0 {
-			return true, nil
+		if total != priorTotal {
+			return false, fmt.Errorf("running total for %q changed from %.0f to %.0f after wrong verdict", teamName, priorTotal, total)
 		}
-		return false, fmt.Errorf("running total for %q is %v, expected 0 (unchanged)", teamName, total)
+		return true, nil
 	})
 }
 

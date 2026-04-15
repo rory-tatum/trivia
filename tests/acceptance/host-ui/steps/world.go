@@ -53,6 +53,10 @@ type World struct {
 	// teamIDs maps team name to the server-assigned team_id.
 	teamIDs map[string]string
 
+	// teamRunningTotals maps team_id to the latest running_total seen in score_updated events.
+	// Updated whenever a score_updated event arrives via addMessage.
+	teamRunningTotals map[string]float64
+
 	// quizLoaded tracks whether the quiz has been loaded into the session.
 	quizLoaded bool
 
@@ -152,6 +156,7 @@ func newWorld() *World {
 		connections:       make(map[string]*WSConnection),
 		receivedMessages:  make(map[string][]WSMessage),
 		teamIDs:           make(map[string]string),
+		teamRunningTotals: make(map[string]float64),
 		commandSentCount:  make(map[string]int),
 		connectionStatus:  statusConnecting,
 		currentRoundIndex: -1,
@@ -209,6 +214,8 @@ func (w *World) addMessage(key string, msg WSMessage) {
 		if errMsg, ok := msg.Payload["message"].(string); ok {
 			w.lastError = errMsg
 		}
+	case eventScoreUpdated:
+		w.captureScoreUpdated(msg.Payload)
 	}
 }
 
@@ -274,6 +281,17 @@ func (w *World) captureQuizLoaded(payload map[string]interface{}) {
 	if qc, ok := payload["question_count"].(float64); ok {
 		w.lastQuizMeta.QuestionCount = int(qc)
 	}
+}
+
+// captureScoreUpdated records the latest running_total per team from a score_updated payload.
+// Called under w.mu — must not lock.
+func (w *World) captureScoreUpdated(payload map[string]interface{}) {
+	teamID, ok := payload["team_id"].(string)
+	if !ok || teamID == "" {
+		return
+	}
+	total, _ := payload["running_total"].(float64)
+	w.teamRunningTotals[teamID] = total
 }
 
 // teamID returns the server-assigned team_id for a team name, or the name itself as fallback.
