@@ -71,9 +71,6 @@ type World struct {
 	// authFailed is true when a connection attempt was refused due to an invalid token.
 	authFailed bool
 
-	// authErrorMessage is the human-readable message for the auth failure.
-	authErrorMessage string
-
 	// reconnectAttemptCount tracks how many reconnect attempts were made after auth failure.
 	reconnectAttemptCount int
 

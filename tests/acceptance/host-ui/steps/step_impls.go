@@ -397,7 +397,6 @@ func (w *World) whenMarcusConnectsWithToken(token string) error {
 		// Auth failure is permanent — WsClient does not retry on 403.
 		w.lastConnectError = err
 		w.authFailed = true
-		w.authErrorMessage = "Connection refused — invalid token. Check HOST_TOKEN and reload."
 		w.lastError = fmt.Sprintf("connection refused: %v", err)
 		w.reconnectAttemptCount = 0
 	}
@@ -541,14 +540,12 @@ func (w *World) thenConnectionStatusConnecting() error {
 }
 
 func (w *World) thenConnectionStatusDisconnected() error {
-	if w.lastError == "" && !w.hasReceivedEvent("host", "connection_refused") {
-		// Check if dial itself failed (wrong token path).
-		if w.connections["host"] != nil && !w.connections["host"].Connected {
-			return nil
-		}
-		return fmt.Errorf("expected disconnected status but connection appears active")
+	// Primary observable: the dial was refused by the server (lastConnectError != nil).
+	// ConnectHostWithToken returns an error when the server rejects the WebSocket upgrade.
+	if w.lastConnectError != nil {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("expected connection refused (disconnected) but dial succeeded — lastConnectError is nil")
 }
 
 func (w *World) thenConnectionStatusReconnecting() error {
@@ -563,8 +560,11 @@ func (w *World) thenConnectionStatusReconnecting() error {
 func (w *World) thenMessageVisible(msg string) error {
 	// Observable: a message with the expected text was received or the auth error was set.
 	if w.authFailed {
-		if w.authErrorMessage != msg {
-			return fmt.Errorf("expected auth error message %q but got %q", msg, w.authErrorMessage)
+		// Primary observable: the server actually refused the connection (lastConnectError != nil).
+		// The exact UI message text is the WsClient/React display string — a frontend concern
+		// not observable at Go protocol level. What IS observable: the dial was refused.
+		if w.lastConnectError == nil {
+			return fmt.Errorf("expected auth failure (connection refused) but dial succeeded")
 		}
 		return nil
 	}
