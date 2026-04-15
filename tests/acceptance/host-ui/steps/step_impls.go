@@ -26,6 +26,20 @@ const (
 	rolePlay    = "play"
 )
 
+// Connection status values observed at the protocol level.
+const (
+	statusConnecting   = "connecting"
+	statusConnected    = "connected"
+	statusReconnecting = "reconnecting"
+	statusDisconnected = "disconnected"
+)
+
+// defaultFixtureFilename is the auto-generated quiz fixture used when no fixture is registered.
+const defaultFixtureFilename = "default-test.yaml"
+
+// negativeEventWindow is the brief wait used when asserting that an event must NOT arrive.
+const negativeEventWindow = 100 * time.Millisecond
+
 // Event type names sent by the server over WebSocket.
 const (
 	eventQuizLoaded            = "quiz_loaded"
@@ -33,8 +47,7 @@ const (
 	eventQuestionRevealed      = "question_revealed"
 	eventScoringData           = "scoring_data"
 	eventScoreUpdated          = "score_updated"
-	eventScoresPublished      = "scores_published"
-	eventRoundScoresPublished = "round_scores_published"
+	eventRoundScoresPublished  = "round_scores_published"
 	eventCeremonyQuestionShown = "ceremony_question_shown"
 	eventCeremonyAnswerReveal  = "ceremony_answer_revealed"
 	eventGameOver              = "game_over"
@@ -43,6 +56,10 @@ const (
 
 // eventWaitTimeout is the default deadline used by waitForEvent calls in Then steps.
 const eventWaitTimeout = 2 * time.Second
+
+// revealWaitTimeout is the extended deadline used when polling for all questions to be revealed.
+// Revealing multiple questions takes longer than a single event wait.
+const revealWaitTimeout = 3 * time.Second
 
 // =============================================================================
 // Given implementations — arrange preconditions
@@ -93,7 +110,7 @@ func (w *World) givenMarcusConnectsToHostPanel() error {
 	if err := driver.ConnectHost(w.ctx); err != nil {
 		return err
 	}
-	w.connectionStatus = "connected"
+	w.connectionStatus = statusConnected
 	return nil
 }
 
@@ -212,10 +229,7 @@ func (w *World) givenScoringOpen(roundIndex int) error {
 	if err := driver.HostEndRound(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	if err := driver.HostBeginScoring(w.ctx, roundIndex); err != nil {
-		return err
-	}
-	return w.waitForScoringData()
+	return w.beginScoringAndWait(roundIndex)
 }
 
 func (w *World) givenTeamSubmittedAnswer(teamName string, questionIndex int, answer string) error {
@@ -255,10 +269,7 @@ func (w *World) givenRoundFullyComplete(roundIndex int) error {
 	if err := w.givenRoundEnded(roundIndex, defaultQuestionCount); err != nil {
 		return err
 	}
-	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
-		return err
-	}
-	if err := w.waitForScoringData(); err != nil {
+	if err := w.beginScoringAndWait(roundIndex); err != nil {
 		return err
 	}
 	if err := w.givenAllAnswersMarked(roundIndex); err != nil {
@@ -288,10 +299,7 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 	if err := w.givenRoundEnded(roundIndex, 2); err != nil {
 		return err
 	}
-	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
-		return err
-	}
-	if err := w.waitForScoringData(); err != nil {
+	if err := w.beginScoringAndWait(roundIndex); err != nil {
 		return err
 	}
 	// Mark one answer correct per team (equal scores).
@@ -328,6 +336,16 @@ func (w *World) waitForScoringData() error {
 	return nil
 }
 
+// beginScoringAndWait sends the begin_scoring command and blocks until scoring_data arrives.
+// Extracted from givenRoundFullyComplete and givenRoundPlayedWithEqualScores which share
+// this identical two-step sequence.
+func (w *World) beginScoringAndWait(roundIndex int) error {
+	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	return w.waitForScoringData()
+}
+
 // ensureQuizLoaded loads the first available quiz fixture if no quiz is loaded yet.
 func (w *World) ensureQuizLoaded() error {
 	if w.quizLoaded {
@@ -345,11 +363,11 @@ func (w *World) ensureQuizLoaded() error {
 		return nil
 	}
 	// No fixture registered — create a minimal one.
-	w.quizFixtures["default-test.yaml"] = SimpleQuizYAML("Test Quiz", []QuizQuestion{
+	w.quizFixtures[defaultFixtureFilename] = SimpleQuizYAML("Test Quiz", []QuizQuestion{
 		{Text: "Question 1?", Answer: "Answer 1"},
 		{Text: "Question 2?", Answer: "Answer 2"},
 	})
-	return w.whenMarcusLoadsQuiz("default-test.yaml")
+	return w.whenMarcusLoadsQuiz(defaultFixtureFilename)
 }
 
 // =============================================================================
@@ -387,7 +405,7 @@ func (w *World) whenMarcusLoadsQuizByPath(filePath string) error {
 		return err
 	}
 	// Wait briefly for error or success.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(negativeEventWindow)
 	return nil
 }
 
@@ -403,7 +421,7 @@ func (w *World) whenWebSocketHandshakeCompletes() error {
 	// The WebSocket handshake completes when ConnectHost returns nil.
 	// At this point the connection is in wsConns and onOpen has fired.
 	// Verify the host connection is established (handshake succeeded).
-	conn, ok := w.connections["host"]
+	conn, ok := w.connections[roleHost]
 	if !ok || conn == nil || !conn.Connected {
 		return fmt.Errorf("WebSocket handshake: no active host connection — ConnectHost must be called first")
 	}
@@ -435,12 +453,12 @@ func (w *World) whenMarcusConnectsWithToken(token string) error {
 func (w *World) whenWebSocketDrops() error {
 	// Force-close the host connection using StatusGoingAway to simulate an unexpected drop.
 	// Sets connectionStatus to "reconnecting" — the observable protocol state after a drop.
-	if conn, ok := w.connections["host"]; ok && conn.driver != nil {
+	if conn, ok := w.connections[roleHost]; ok && conn.driver != nil {
 		conn.driver.DropHostConnection(w.ctx)
 		conn.Connected = false
 	}
 	w.connectionDropped = true
-	w.connectionStatus = "reconnecting"
+	w.connectionStatus = statusReconnecting
 	return nil
 }
 
@@ -450,7 +468,7 @@ func (w *World) whenWebSocketRestores() error {
 		return err
 	}
 	w.connectionDropped = false
-	w.connectionStatus = "connected"
+	w.connectionStatus = statusConnected
 	return nil
 }
 
@@ -461,7 +479,7 @@ func (w *World) whenWebSocketFailsToReconnect(count int) error {
 	// observable protocol outcome: world state reflecting the exhausted reconnect loop.
 	w.reconnectFailureCount = count
 	w.reconnectExhausted = true
-	w.connectionStatus = "disconnected"
+	w.connectionStatus = statusDisconnected
 	return nil
 }
 
@@ -474,12 +492,15 @@ func (w *World) whenMarcusRevealsQuestion(roundIndex, questionIndex int) error {
 }
 
 func (w *World) whenMarcusEndsRound() error {
+	// Clicking "End Round" in the UI sends end_round then immediately transitions
+	// the server into scoring phase via begin_scoring. Round 0 is used because
+	// the active round is established by precondition Given steps.
+	const activeRound = 0
 	driver := w.hostDriver()
-	// Default round 0; the precondition step ensures the right round is active.
-	if err := driver.HostEndRound(w.ctx, 0); err != nil {
+	if err := driver.HostEndRound(w.ctx, activeRound); err != nil {
 		return err
 	}
-	return driver.HostBeginScoring(w.ctx, 0)
+	return driver.HostBeginScoring(w.ctx, activeRound)
 }
 
 func (w *World) whenMarcusMarksAnswer(teamName string, roundIndex, questionIndex int, verdict string) error {
@@ -527,7 +548,10 @@ func (w *World) whenMarcusEndsGame() error {
 }
 
 func (w *World) whenMarcusSendsMarkAnswerWithoutRound() error {
-	return w.hostDriver().HostMarkAnswer(w.ctx, "some-team", 99, 0, "correct")
+	// Sends a mark_answer command targeting a non-existent round (index 99)
+	// to exercise the server's guard against marking answers before a round starts.
+	const invalidRoundIndex = 99
+	return w.hostDriver().HostMarkAnswer(w.ctx, "some-team", invalidRoundIndex, 0, "correct")
 }
 
 func (w *World) whenMarcusSendsStartRound(roundIndex int) error {
@@ -580,8 +604,8 @@ func (w *World) thenConnectionStatusDisconnected() error {
 func (w *World) thenConnectionStatusReconnecting() error {
 	// Observable: the protocol-level state after a drop is "reconnecting".
 	// This is set by whenWebSocketDrops when the connection is force-closed.
-	if w.connectionStatus != "reconnecting" {
-		return fmt.Errorf("expected connection status %q but got %q", "reconnecting", w.connectionStatus)
+	if w.connectionStatus != statusReconnecting {
+		return fmt.Errorf("expected connection status %q but got %q", statusReconnecting, w.connectionStatus)
 	}
 	return nil
 }
@@ -638,6 +662,51 @@ func (w *World) thenFilePathInputVisible() error {
 	return w.thenLoadQuizFormVisible()
 }
 
+// thenStartRoundButtonVisible verifies that the "Start Round N" button should be visible.
+// Round 1: quiz loaded and no round has started yet.
+// Round N>1: round N-1 scores published and round N has not started.
+func (w *World) thenStartRoundButtonVisible(label string) error {
+	_, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("%q button not visible: quiz_loaded event not received", label)
+	}
+	// Extract round number from label, e.g. "Start Round 2" or "Start Round 2: Round Name".
+	var roundNum int
+	if _, err := fmt.Sscanf(label, "Start Round %d", &roundNum); err != nil {
+		roundNum = 1
+	}
+	targetRoundIndex := roundNum - 1 // zero-based
+	if roundNum <= 1 {
+		if w.hasReceivedEvent(roleHost, eventRoundStarted) {
+			return fmt.Errorf("%q button not visible: round has already started", label)
+		}
+		return nil
+	}
+	// For Round N>1, prior round (N-1) must have published scores.
+	prevRoundIndex := float64(targetRoundIndex - 1)
+	scoredPrev := false
+	for _, msg := range w.messagesFor(roleHost) {
+		if msg.Event == eventRoundScoresPublished {
+			if ri, ok := msg.Payload["round_index"].(float64); ok && ri == prevRoundIndex {
+				scoredPrev = true
+				break
+			}
+		}
+	}
+	if !scoredPrev {
+		return fmt.Errorf("%q button not visible: round_scores_published for round %d not received", label, targetRoundIndex-1)
+	}
+	// The target round must not have started yet.
+	for _, msg := range w.messagesFor(roleHost) {
+		if msg.Event == eventRoundStarted {
+			if ri, ok := msg.Payload["round_index"].(float64); ok && ri == float64(targetRoundIndex) {
+				return fmt.Errorf("%q button not visible: round %d has already started", label, roundNum)
+			}
+		}
+	}
+	return nil
+}
+
 func (w *World) thenButtonVisible(label string) error {
 	// Observable: the button is a UI concern. At the acceptance layer we verify
 	// the server state is consistent with the button being shown.
@@ -648,48 +717,7 @@ func (w *World) thenButtonVisible(label string) error {
 	//   "End Game"       → round_scores_published received (last round scored, game can end)
 	switch {
 	case strings.HasPrefix(label, "Start Round"):
-		// "Start Round 1" visible after quiz_loaded and before any round has started.
-		// "Start Round N" (N>1) visible after round N-1 scores published and before round N started.
-		_, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
-		if !ok {
-			return fmt.Errorf("%q button not visible: quiz_loaded event not received", label)
-		}
-		// Extract round number from label, e.g. "Start Round 2" or "Start Round 2: Round Name".
-		var roundNum int
-		if _, err := fmt.Sscanf(label, "Start Round %d", &roundNum); err != nil {
-			roundNum = 1
-		}
-		targetRoundIndex := roundNum - 1 // zero-based
-		if roundNum <= 1 {
-			// For Round 1, no prior round_started event should exist.
-			if w.hasReceivedEvent(roleHost, eventRoundStarted) {
-				return fmt.Errorf("%q button not visible: round has already started", label)
-			}
-		} else {
-			// For Round N>1, prior round (N-1) must have published scores.
-			prevRoundIndex := float64(targetRoundIndex - 1)
-			scoredPrev := false
-			for _, msg := range w.messagesFor(roleHost) {
-				if msg.Event == eventRoundScoresPublished {
-					if ri, ok := msg.Payload["round_index"].(float64); ok && ri == prevRoundIndex {
-						scoredPrev = true
-						break
-					}
-				}
-			}
-			if !scoredPrev {
-				return fmt.Errorf("%q button not visible: round_scores_published for round %d not received", label, targetRoundIndex-1)
-			}
-			// The target round must not have started yet.
-			for _, msg := range w.messagesFor(roleHost) {
-				if msg.Event == eventRoundStarted {
-					if ri, ok := msg.Payload["round_index"].(float64); ok && ri == float64(targetRoundIndex) {
-						return fmt.Errorf("%q button not visible: round %d has already started", label, roundNum)
-					}
-				}
-			}
-		}
-		return nil
+		return w.thenStartRoundButtonVisible(label)
 
 	case label == "End Round":
 		// "End Round" button visible when all questions in the active round have been revealed.
@@ -885,8 +913,7 @@ func (w *World) thenFirstQuestionInList() error {
 }
 
 func (w *World) thenRevealedQuestionsCount(count int) error {
-	const revealTimeout = 3 * time.Second
-	return pollUntil(revealTimeout, 20*time.Millisecond, func() (bool, error) {
+	return pollUntil(revealWaitTimeout, 20*time.Millisecond, func() (bool, error) {
 		w.mu.Lock()
 		questions := make([]string, len(w.revealedQuestions))
 		copy(questions, w.revealedQuestions)
@@ -997,34 +1024,39 @@ func (w *World) thenRunningTotalIncreasedBy(teamName string, points int) error {
 	return nil
 }
 
+// latestRunningTotal scans received score_updated messages in reverse and returns
+// the most recent running_total for the given team. Returns (-1, false) if no
+// score_updated event for the team has been received yet.
+func (w *World) latestRunningTotal(teamID string) (float64, bool) {
+	msgs := w.messagesFor(roleHost)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Event != eventScoreUpdated {
+			continue
+		}
+		tid, _ := msgs[i].Payload["team_id"].(string)
+		if tid != teamID {
+			continue
+		}
+		total, _ := msgs[i].Payload["running_total"].(float64)
+		return total, true
+	}
+	return -1, false
+}
+
 func (w *World) thenRunningTotalReflectsCorrectCount(teamName string, count int) error {
 	// Observable: a score_updated event for the given team with running_total == count.
 	// Poll until we see a matching event or the deadline elapses.
 	// Earlier score_updated events (running_total < count) are expected and skipped.
 	teamID := w.teamID(teamName)
-	var lastTotal float64 = -1
 	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
-		msgs := w.messagesFor(roleHost)
-		for i := len(msgs) - 1; i >= 0; i-- {
-			if msgs[i].Event != eventScoreUpdated {
-				continue
-			}
-			tid, _ := msgs[i].Payload["team_id"].(string)
-			if tid != teamID {
-				continue
-			}
-			total, _ := msgs[i].Payload["running_total"].(float64)
-			lastTotal = total
-			if int(total) == count {
-				return true, nil
-			}
-			// Most recent event for this team does not match yet; keep polling.
-			break
-		}
-		if lastTotal < 0 {
+		total, found := w.latestRunningTotal(teamID)
+		if !found {
 			return false, fmt.Errorf("score_updated event not received for team %q", teamName)
 		}
-		return false, fmt.Errorf("running total for %q is %v, expected %d correct", teamName, lastTotal, count)
+		if int(total) == count {
+			return true, nil
+		}
+		return false, fmt.Errorf("running total for %q is %v, expected %d correct", teamName, total, count)
 	})
 }
 
@@ -1033,22 +1065,14 @@ func (w *World) thenRunningTotalUnchanged(teamName string) error {
 	// (no prior correct answers in this scenario, so total is unchanged at 0).
 	teamID := w.teamID(teamName)
 	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
-		msgs := w.messagesFor(roleHost)
-		for i := len(msgs) - 1; i >= 0; i-- {
-			if msgs[i].Event != eventScoreUpdated {
-				continue
-			}
-			tid, _ := msgs[i].Payload["team_id"].(string)
-			if tid != teamID {
-				continue
-			}
-			total, _ := msgs[i].Payload["running_total"].(float64)
-			if int(total) == 0 {
-				return true, nil
-			}
-			return false, fmt.Errorf("running total for %q is %v, expected 0 (unchanged)", teamName, total)
+		total, found := w.latestRunningTotal(teamID)
+		if !found {
+			return false, fmt.Errorf("score_updated event not received for team %q", teamName)
 		}
-		return false, fmt.Errorf("score_updated event not received for team %q", teamName)
+		if int(total) == 0 {
+			return true, nil
+		}
+		return false, fmt.Errorf("running total for %q is %v, expected 0 (unchanged)", teamName, total)
 	})
 }
 
@@ -1112,7 +1136,7 @@ func (w *World) thenDisplayReceivesAnswer(questionIndex int) error {
 func (w *World) thenPlayScreenDoesNotReceiveAnswer(teamName string) error {
 	// Observable: play connection for teamName did NOT receive ceremony_answer_revealed.
 	// Wait a short window then assert no such event arrived.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(negativeEventWindow)
 	key := connectionKey(rolePlay, teamName)
 	if w.hasReceivedEvent(key, eventCeremonyAnswerReveal) {
 		return fmt.Errorf("play screen for %q incorrectly received ceremony_answer_revealed", teamName)
@@ -1120,29 +1144,32 @@ func (w *World) thenPlayScreenDoesNotReceiveAnswer(teamName string) error {
 	return nil
 }
 
-func (w *World) thenFinalLeaderboardVisible() error {
-	// Observable: game_over event received with final_scores payload.
-	// The server broadcasts GameOverPayload{FinalScores map[string]int} as {"final_scores": {...}}.
+// waitForGameOverScores waits for the game_over event and returns its final_scores map.
+// Returns an error if the event is not received or if final_scores is missing or malformed.
+func (w *World) waitForGameOverScores() (map[string]interface{}, error) {
 	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
 	if !ok {
-		return fmt.Errorf("game_over event not received — final leaderboard not visible")
+		return nil, fmt.Errorf("game_over event not received — final leaderboard not visible")
 	}
-	if _, hasScores := msg.Payload["final_scores"]; !hasScores {
-		return fmt.Errorf("game_over payload missing final_scores field (got: %v)", msg.Payload)
+	finalScores, ok := msg.Payload["final_scores"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("game_over payload missing or malformed final_scores (got %T: %v)", msg.Payload["final_scores"], msg.Payload["final_scores"])
 	}
-	return nil
+	return finalScores, nil
+}
+
+func (w *World) thenFinalLeaderboardVisible() error {
+	// Observable: game_over event received with final_scores payload.
+	_, err := w.waitForGameOverScores()
+	return err
 }
 
 func (w *World) thenTeamOnLeaderboard(teamName string) error {
 	// Observable: game_over payload final_scores contains the team by ID.
 	// final_scores is a map from team_id → score. We resolve the team name to ID.
-	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
-	if !ok {
-		return fmt.Errorf("game_over event not received")
-	}
-	finalScores, ok := msg.Payload["final_scores"].(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("game_over final_scores is not a map (got %T: %v)", msg.Payload["final_scores"], msg.Payload["final_scores"])
+	finalScores, err := w.waitForGameOverScores()
+	if err != nil {
+		return err
 	}
 	// Look for the team by its server-assigned ID.
 	teamID := w.teamID(teamName)
@@ -1159,12 +1186,11 @@ func (w *World) thenTeamOnLeaderboard(teamName string) error {
 func (w *World) thenLeaderboardSortedDescending() error {
 	// Observable: game_over payload final_scores are sorted descending by score.
 	// final_scores is a map[string]int, trivially satisfied unless multiple teams exist.
-	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
-	if !ok {
-		return fmt.Errorf("game_over event not received")
+	finalScores, err := w.waitForGameOverScores()
+	if err != nil {
+		return err
 	}
-	finalScores, ok := msg.Payload["final_scores"].(map[string]interface{})
-	if !ok || len(finalScores) < 2 {
+	if len(finalScores) < 2 {
 		return nil // zero or one team — sort is trivially satisfied
 	}
 	// Map is unordered; for a single-team WS-01 scenario this trivially passes.
@@ -1209,8 +1235,8 @@ func (w *World) thenRoundPanelStillVisible() error {
 
 func (w *World) thenGameControlsAvailable() error {
 	// Observable: host is reconnected and in "connected" state — game controls are presented.
-	if w.connectionStatus != "connected" {
-		return fmt.Errorf("game controls not available: connection status is %q (expected %q)", w.connectionStatus, "connected")
+	if w.connectionStatus != statusConnected {
+		return fmt.Errorf("game controls not available: connection status is %q (expected %q)", w.connectionStatus, statusConnected)
 	}
 	if w.connections[roleHost] == nil || !w.connections[roleHost].Connected {
 		return fmt.Errorf("host not connected — game controls unavailable")
@@ -1235,13 +1261,13 @@ func (w *World) thenGamePanelVisibleBeneathOverlay() error {
 	if !w.reconnectExhausted {
 		return fmt.Errorf("reconnect overlay not active — cannot verify game panel beneath overlay")
 	}
-	if _, ok := w.connections["host"]; !ok {
+	if _, ok := w.connections[roleHost]; !ok {
 		return fmt.Errorf("game panel not visible beneath overlay: no host connection existed")
 	}
 	// connectionStatus "disconnected" confirms the system preserved prior state
 	// rather than resetting to "connecting" (which would erase game panel state).
-	if w.connectionStatus != "disconnected" {
-		return fmt.Errorf("expected connectionStatus %q but got %q — game panel state may not be preserved", "disconnected", w.connectionStatus)
+	if w.connectionStatus != statusDisconnected {
+		return fmt.Errorf("expected connectionStatus %q but got %q — game panel state may not be preserved", statusDisconnected, w.connectionStatus)
 	}
 	return nil
 }

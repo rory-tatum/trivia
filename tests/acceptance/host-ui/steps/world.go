@@ -153,7 +153,7 @@ func newWorld() *World {
 		receivedMessages:  make(map[string][]WSMessage),
 		teamIDs:           make(map[string]string),
 		commandSentCount:  make(map[string]int),
-		connectionStatus:  "connecting",
+		connectionStatus:  statusConnecting,
 		currentRoundIndex: -1,
 		currentRoundName:  "",
 		revealedCount:     0,
