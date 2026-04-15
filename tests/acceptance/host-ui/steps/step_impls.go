@@ -189,7 +189,7 @@ func (w *World) givenRoundEnded(roundIndex, questionCount int) error {
 }
 
 func (w *World) givenTeamEnteredAnswers(teamName string, count int) error {
-	driver := w.hostDriver()
+	driver := w.playDriver(teamName)
 	for i := 0; i < count; i++ {
 		if err := driver.PlayDraftAnswer(w.ctx, teamName, 0, i, fmt.Sprintf("answer %d", i+1)); err != nil {
 			return err
@@ -219,7 +219,7 @@ func (w *World) givenScoringOpen(roundIndex int) error {
 }
 
 func (w *World) givenTeamSubmittedAnswer(teamName string, questionIndex int, answer string) error {
-	driver := w.hostDriver()
+	driver := w.playDriver(teamName)
 	return driver.PlayDraftAnswer(w.ctx, teamName, 0, questionIndex, answer)
 }
 

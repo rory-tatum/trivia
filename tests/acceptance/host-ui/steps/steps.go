@@ -457,6 +457,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.thenScoringPanelShowsCorrectAnswers()
 		})
 
+	sc.Step(`^the scoring panel shows the correct answer for each question$`,
+		func() error {
+			return w.thenScoringPanelShowsCorrectAnswers()
+		})
+
 	sc.Step(`^the scoring panel shows submitted answers for "([^"]*)"$`,
 		func(teamName string) error {
 			return w.thenScoringPanelShowsTeamSubmissions(teamName)

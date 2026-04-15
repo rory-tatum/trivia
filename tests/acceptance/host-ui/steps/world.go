@@ -358,3 +358,14 @@ func (w *World) hostDriver() *HostUIDriver {
 	}
 	return conn.driver
 }
+
+// playDriver returns the HostUIDriver for the named team's play connection.
+// Panics if no play connection has been established for the team — precondition violated.
+func (w *World) playDriver(teamName string) *HostUIDriver {
+	key := connectionKey(rolePlay, teamName)
+	conn, ok := w.connections[key]
+	if !ok || conn.driver == nil {
+		panic(fmt.Sprintf("play connection not established for team %q — check Given steps", teamName))
+	}
+	return conn.driver
+}
