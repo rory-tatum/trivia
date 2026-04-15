@@ -816,32 +816,41 @@ func (w *World) thenRunningTotalIncreasedBy(teamName string, points int) error {
 }
 
 func (w *World) thenRunningTotalReflectsCorrectCount(teamName string, count int) error {
-	// Observable: score_updated event received with running_total matching count of correct answers.
-	// We look for the last score_updated event for the given team and check running_total == count.
+	// Observable: a score_updated event for the given team with running_total == count.
+	// Poll until we see a matching event or the deadline elapses.
+	// Earlier score_updated events (running_total < count) are expected and skipped.
 	teamID := w.teamID(teamName)
-	msgs := w.messagesFor("host")
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Event == "score_updated" {
-			tid, _ := msgs[i].Payload["team_id"].(string)
-			if tid == teamID {
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	var lastTotal float64 = -1
+	for {
+		select {
+		case <-deadline:
+			if lastTotal < 0 {
+				return fmt.Errorf("score_updated event not received for team %q", teamName)
+			}
+			return fmt.Errorf("running total for %q is %v, expected %d correct", teamName, lastTotal, count)
+		case <-ticker.C:
+			msgs := w.messagesFor("host")
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].Event != "score_updated" {
+					continue
+				}
+				tid, _ := msgs[i].Payload["team_id"].(string)
+				if tid != teamID {
+					continue
+				}
 				total, _ := msgs[i].Payload["running_total"].(float64)
+				lastTotal = total
 				if int(total) == count {
 					return nil
 				}
-				return fmt.Errorf("running total for %q is %v, expected %d correct", teamName, total, count)
+				// Most recent event for this team does not match yet; keep polling.
+				break
 			}
 		}
 	}
-	// score_updated may not have arrived yet — wait for it.
-	msg, ok := w.waitForEvent("host", "score_updated", 2*time.Second)
-	if !ok {
-		return fmt.Errorf("score_updated event not received for team %q", teamName)
-	}
-	total, _ := msg.Payload["running_total"].(float64)
-	if int(total) == count {
-		return nil
-	}
-	return fmt.Errorf("running total for %q is %v, expected %d correct", teamName, total, count)
 }
 
 func (w *World) thenRunningTotalUnchanged(teamName string) error {
