@@ -830,15 +830,27 @@ func (w *World) thenFirstQuestionInList() error {
 }
 
 func (w *World) thenRevealedQuestionsCount(count int) error {
-	msgs := w.messagesFor("host")
-	revealed := 0
-	for _, msg := range msgs {
-		if msg.Event == "question_revealed" {
-			revealed++
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		w.mu.Lock()
+		n := len(w.revealedQuestions)
+		w.mu.Unlock()
+		if n >= count {
+			break
 		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	if revealed != count {
-		return fmt.Errorf("expected %d questions revealed, got %d", count, revealed)
+	w.mu.Lock()
+	questions := make([]string, len(w.revealedQuestions))
+	copy(questions, w.revealedQuestions)
+	w.mu.Unlock()
+	if len(questions) != count {
+		return fmt.Errorf("expected %d revealed questions, got %d", count, len(questions))
+	}
+	for i, q := range questions {
+		if q == "" {
+			return fmt.Errorf("revealed question at index %d is empty", i)
+		}
 	}
 	return nil
 }

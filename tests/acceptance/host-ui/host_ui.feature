@@ -178,8 +178,8 @@ Feature: Host UI — Quizmaster Panel
     Then the first revealed question appears in the question list
     And the round panel shows "1 of 5 revealed"
 
-  # @skip @driving_port @real-io @US-03
-  @skip @driving_port @real-io @US-03
+  # @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Questions are revealed in sequential order matching the quiz file
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "seq-test.yaml" with 1 round of 3 text questions
