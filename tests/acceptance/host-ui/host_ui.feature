@@ -122,8 +122,8 @@ Feature: Host UI — Quizmaster Panel
     And a "Load Quiz" button is visible
     And no "Start Round" button is visible
 
-  # @skip @driving_port @real-io @US-02
-  @skip @driving_port @real-io @US-02
+  # @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Successful quiz load shows confirmation and all session URLs
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "pub-night-vol3.yaml" with 3 rounds of 5 text questions each

@@ -49,7 +49,7 @@ func (w *World) givenQuizFileExists(filename string, rounds, questions int) erro
 }
 
 func (w *World) givenQuizFileExistsMultiRound(filename string, rounds, questionsPerRound int) error {
-	w.quizFixtures[filename] = MultiRoundQuizYAML("Friday Night Trivia", rounds, questionsPerRound)
+	w.quizFixtures[filename] = MultiRoundQuizYAML(TitleFromFilename(filename), rounds, questionsPerRound)
 	return nil
 }
 

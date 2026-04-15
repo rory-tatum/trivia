@@ -342,3 +342,38 @@ type QuizQuestion struct {
 	Text   string
 	Answer string
 }
+
+// TitleFromFilename derives a human-readable quiz title from a filename by:
+// stripping the ".yaml" extension, splitting on "-", title-casing each part,
+// and separating trailing digit sequences with ". " (e.g. "pub-night-vol3" → "Pub Night Vol. 3").
+func TitleFromFilename(filename string) string {
+	name := strings.TrimSuffix(filename, ".yaml")
+	parts := strings.Split(name, "-")
+	titleParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		titleParts = append(titleParts, titleCasePart(part))
+	}
+	return strings.Join(titleParts, " ")
+}
+
+// titleCasePart title-cases a word, separating a trailing digit sequence with ". ".
+// Examples: "pub" → "Pub", "night" → "Night", "vol3" → "Vol. 3".
+func titleCasePart(part string) string {
+	if part == "" {
+		return part
+	}
+	// Split into alpha prefix and digit suffix.
+	i := len(part)
+	for i > 0 && part[i-1] >= '0' && part[i-1] <= '9' {
+		i--
+	}
+	alpha, digits := part[:i], part[i:]
+	if alpha == "" {
+		return digits
+	}
+	titled := strings.ToUpper(alpha[:1]) + alpha[1:]
+	if digits == "" {
+		return titled
+	}
+	return titled + ". " + digits
+}
