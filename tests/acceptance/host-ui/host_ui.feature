@@ -254,8 +254,8 @@ Feature: Host UI — Quizmaster Panel
     Then the running total for "Quiz Killers" is unchanged
     And the "Wrong" button for "Quiz Killers" on question 1 is visually marked as applied
 
-  # @skip @driving_port @real-io @US-04
-  @skip @driving_port @real-io @US-04
+  # @driving_port @real-io @US-04
+  @driving_port @real-io @US-04
   Scenario: Publishing scores makes the next-round and end-game controls available
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "multi-round.yaml" with 2 rounds of 2 text questions each

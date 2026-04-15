@@ -224,12 +224,20 @@ func (w *World) givenTeamSubmittedAnswer(teamName string, questionIndex int, ans
 }
 
 func (w *World) givenAllAnswersMarked(roundIndex int) error {
+	// Ensure scoring is open before marking answers.
+	if err := w.givenScoringOpen(roundIndex); err != nil {
+		return fmt.Errorf("opening scoring for round %d: %w", roundIndex, err)
+	}
 	driver := w.hostDriver()
 	// Mark all teams' answers for the round (best effort with known team IDs).
 	for teamName, teamID := range w.teamIDs {
 		for qi := 0; qi < defaultQuestionCount; qi++ {
 			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
 				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
+			}
+			// Wait for score_updated to confirm each mark was accepted.
+			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
+				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
 			}
 		}
 	}
@@ -640,13 +648,46 @@ func (w *World) thenButtonVisible(label string) error {
 	//   "End Game"       → round_scores_published received (last round scored, game can end)
 	switch {
 	case strings.HasPrefix(label, "Start Round"):
-		// "Start Round 1" (or "Start Round N: ...") visible after quiz_loaded, before round_started.
+		// "Start Round 1" visible after quiz_loaded and before any round has started.
+		// "Start Round N" (N>1) visible after round N-1 scores published and before round N started.
 		_, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
 		if !ok {
 			return fmt.Errorf("%q button not visible: quiz_loaded event not received", label)
 		}
-		if w.hasReceivedEvent(roleHost, eventRoundStarted) {
-			return fmt.Errorf("%q button not visible: round has already started", label)
+		// Extract round number from label, e.g. "Start Round 2" or "Start Round 2: Round Name".
+		var roundNum int
+		if _, err := fmt.Sscanf(label, "Start Round %d", &roundNum); err != nil {
+			roundNum = 1
+		}
+		targetRoundIndex := roundNum - 1 // zero-based
+		if roundNum <= 1 {
+			// For Round 1, no prior round_started event should exist.
+			if w.hasReceivedEvent(roleHost, eventRoundStarted) {
+				return fmt.Errorf("%q button not visible: round has already started", label)
+			}
+		} else {
+			// For Round N>1, prior round (N-1) must have published scores.
+			prevRoundIndex := float64(targetRoundIndex - 1)
+			scoredPrev := false
+			for _, msg := range w.messagesFor(roleHost) {
+				if msg.Event == eventRoundScoresPublished {
+					if ri, ok := msg.Payload["round_index"].(float64); ok && ri == prevRoundIndex {
+						scoredPrev = true
+						break
+					}
+				}
+			}
+			if !scoredPrev {
+				return fmt.Errorf("%q button not visible: round_scores_published for round %d not received", label, targetRoundIndex-1)
+			}
+			// The target round must not have started yet.
+			for _, msg := range w.messagesFor(roleHost) {
+				if msg.Event == eventRoundStarted {
+					if ri, ok := msg.Payload["round_index"].(float64); ok && ri == float64(targetRoundIndex) {
+						return fmt.Errorf("%q button not visible: round %d has already started", label, roundNum)
+					}
+				}
+			}
 		}
 		return nil
 
@@ -1021,18 +1062,18 @@ func (w *World) thenVerdictButtonMarked(teamName string, questionIndex int, verd
 }
 
 func (w *World) thenRoundScoreSummaryVisible() error {
-	// Observable: scores_published event received.
-	_, ok := w.waitForEvent(roleHost, eventScoresPublished, eventWaitTimeout)
+	// Observable: round_scores_published event received.
+	_, ok := w.waitForEvent(roleHost, eventRoundScoresPublished, eventWaitTimeout)
 	if !ok {
-		return fmt.Errorf("scores_published event not received — round score summary not visible")
+		return fmt.Errorf("round_scores_published event not received — round score summary not visible")
 	}
 	return nil
 }
 
 func (w *World) thenPublishAcceptedWithoutError() error {
-	_, ok := w.waitForEvent(roleHost, eventScoresPublished, eventWaitTimeout)
+	_, ok := w.waitForEvent(roleHost, eventRoundScoresPublished, eventWaitTimeout)
 	if !ok {
-		return fmt.Errorf("scores_published not received — publish was not accepted")
+		return fmt.Errorf("round_scores_published not received — publish was not accepted")
 	}
 	return nil
 }
