@@ -402,8 +402,8 @@ Feature: Host UI — Quizmaster Panel
     Then the server sends an error event in response
     And an error message is displayed below the file path input
 
-  # @skip @infrastructure-failure @in-memory @US-04
-  @skip @infrastructure-failure @in-memory @US-04
+  # @infrastructure-failure @in-memory @US-04
+  @infrastructure-failure @in-memory @US-04
   Scenario: Scoring command rejected when round has not been started
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid host token
