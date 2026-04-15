@@ -75,6 +75,17 @@ type World struct {
 	// reconnectAttemptCount tracks how many reconnect attempts were made after auth failure.
 	reconnectAttemptCount int
 
+	// connectionStatus tracks the observable protocol state: "connecting", "connected",
+	// "reconnecting", or "disconnected". Set by When steps that drive connection lifecycle.
+	connectionStatus string
+
+	// connectionDropped is true when the host connection was force-closed by the driver.
+	connectionDropped bool
+
+	// currentRoundIndex is the 0-based index of the active round (set when a round is started).
+	// A value >= 0 indicates a round is in progress; -1 means no round has started.
+	currentRoundIndex int
+
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -113,12 +124,14 @@ type WSConnection struct {
 func newWorld() *World {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	return &World{
-		hostToken:        "test-secret-token",
+		hostToken:         "test-secret-token",
 		quizFixtures:     make(map[string]string),
 		connections:      make(map[string]*WSConnection),
 		receivedMessages: make(map[string][]WSMessage),
 		teamIDs:          make(map[string]string),
 		commandSentCount: make(map[string]int),
+		connectionStatus: "connecting",
+		currentRoundIndex: -1,
 		ctx:              ctx,
 		cancel:           cancel,
 	}

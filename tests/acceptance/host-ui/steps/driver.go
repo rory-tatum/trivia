@@ -105,6 +105,22 @@ func (d *HostUIDriver) CloseConnection(role, name string) {
 	}
 }
 
+// DropHostConnection force-closes the host WebSocket with StatusGoingAway to simulate
+// an unexpected mid-game network drop (as opposed to a clean shutdown).
+func (d *HostUIDriver) DropHostConnection(ctx context.Context) {
+	key := connectionKey("host", "")
+	if conn, ok := d.wsConns[key]; ok {
+		conn.Close(websocket.StatusGoingAway, "network drop simulation")
+		delete(d.wsConns, key)
+	}
+}
+
+// ReconnectHost re-dials the host WebSocket after a drop.
+// Equivalent to ConnectHost but makes reconnect intent explicit in the test driver.
+func (d *HostUIDriver) ReconnectHost(ctx context.Context) error {
+	return d.ConnectHost(ctx)
+}
+
 // readLoop receives messages from a WebSocket connection and adds them to the world.
 func (d *HostUIDriver) readLoop(ctx context.Context, key string, conn *websocket.Conn) {
 	for {

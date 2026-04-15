@@ -85,8 +85,8 @@ Feature: Host UI — Quizmaster Panel
     And the message "Connection refused — invalid token. Check HOST_TOKEN and reload." is visible
     And no further connection attempts are made
 
-  # @skip @driving_port @real-io @US-01
-  @skip @driving_port @real-io @US-01
+  # @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Mid-game network drop shows "Reconnecting" and preserves the round panel
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid token and is in Round 2
