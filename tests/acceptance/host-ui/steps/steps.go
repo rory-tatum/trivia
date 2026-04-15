@@ -342,6 +342,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.thenLoadQuizFormVisible()
 		})
 
+	sc.Step(`^the load quiz form is visible$`,
+		func() error {
+			return w.thenLoadQuizFormVisible()
+		})
+
 	sc.Step(`^a file path input labeled "Quiz file path" is visible$`,
 		func() error {
 			return w.thenFilePathInputVisible()

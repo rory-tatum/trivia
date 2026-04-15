@@ -60,15 +60,15 @@ Feature: Host UI — Quizmaster Panel
   # US-01: Reliable Connection Status and Auth Error Handling
   # ============================================================================
 
-  # @skip @driving_port @real-io @US-01
-  @skip @driving_port @real-io @US-01
+  # @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Connection status shows "Connecting" before the handshake completes
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When Marcus opens the quizmaster panel with a valid host token
     Then the connection status shows "Connecting..." before the handshake is complete
 
-  # @skip @driving_port @real-io @US-01
-  @skip @driving_port @real-io @US-01
+  # @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Connection status shows "Connected" only after the handshake succeeds
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When Marcus opens the quizmaster panel with a valid host token
