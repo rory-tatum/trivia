@@ -407,7 +407,7 @@ func (g *GameSession) BeginScoring() error {
 func (g *GameSession) CeremonyQuestion(roundIndex, questionIndex int) QuestionPublic {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+	if !g.roundInBounds(roundIndex) {
 		return QuestionPublic{}
 	}
 	round := g.quiz.Rounds[roundIndex]
@@ -425,7 +425,7 @@ func (g *GameSession) CeremonyQuestion(roundIndex, questionIndex int) QuestionPu
 func (g *GameSession) CeremonyAnswer(roundIndex, questionIndex int) string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+	if !g.roundInBounds(roundIndex) {
 		return ""
 	}
 	round := g.quiz.Rounds[roundIndex]
@@ -435,12 +435,18 @@ func (g *GameSession) CeremonyAnswer(roundIndex, questionIndex int) string {
 	return round.Questions[questionIndex].Answer
 }
 
+// roundInBounds reports whether the quiz is loaded and roundIndex is a valid round index.
+// Must be called with at least a read lock held.
+func (g *GameSession) roundInBounds(roundIndex int) bool {
+	return g.quizLoaded && roundIndex >= 0 && roundIndex < len(g.quiz.Rounds)
+}
+
 // RoundName returns the human-readable name of the given round.
 // Returns an empty string if the quiz is not loaded or the round index is out of range.
 func (g *GameSession) RoundName(roundIndex int) string {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+	if !g.roundInBounds(roundIndex) {
 		return ""
 	}
 	return g.quiz.Rounds[roundIndex].Name
@@ -451,7 +457,7 @@ func (g *GameSession) RoundName(roundIndex int) string {
 func (g *GameSession) RoundQuestionCount(roundIndex int) int {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+	if !g.roundInBounds(roundIndex) {
 		return 0
 	}
 	return len(g.quiz.Rounds[roundIndex].Questions)
@@ -462,36 +468,45 @@ func (g *GameSession) RoundQuestionCount(roundIndex int) int {
 func (g *GameSession) ScoringData(roundIndex int) []ScoringQuestion {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	if !g.quizLoaded || roundIndex < 0 || roundIndex >= len(g.quiz.Rounds) {
+	if !g.roundInBounds(roundIndex) {
 		return nil
 	}
 	round := g.quiz.Rounds[roundIndex]
 	questions := make([]ScoringQuestion, len(round.Questions))
-	for qi, q := range round.Questions {
-		sq := ScoringQuestion{
-			QuestionIndex: qi,
+	for questionIndex, q := range round.Questions {
+		questions[questionIndex] = ScoringQuestion{
+			QuestionIndex: questionIndex,
 			Text:          q.Text,
 			CorrectAnswer: q.Answer,
-			Submissions:   make([]TeamSubmission, 0, len(g.teamOrder)),
+			Submissions:   g.collectTeamSubmissions(roundIndex, questionIndex),
 		}
-		for _, teamID := range g.teamOrder {
-			team := g.teams[teamID]
-			answer := ""
-			for _, sub := range g.submissions[teamID] {
-				if sub.RoundIndex == roundIndex && sub.QuestionIndex == qi {
-					answer = sub.Answer
-					break
-				}
-			}
-			sq.Submissions = append(sq.Submissions, TeamSubmission{
-				TeamID:   teamID,
-				TeamName: team.Name,
-				Answer:   answer,
-			})
-		}
-		questions[qi] = sq
 	}
 	return questions
+}
+
+// collectTeamSubmissions builds the ordered list of TeamSubmission entries for one question.
+// Must be called with at least a read lock held.
+func (g *GameSession) collectTeamSubmissions(roundIndex, questionIndex int) []TeamSubmission {
+	result := make([]TeamSubmission, 0, len(g.teamOrder))
+	for _, teamID := range g.teamOrder {
+		result = append(result, TeamSubmission{
+			TeamID:   teamID,
+			TeamName: g.teams[teamID].Name,
+			Answer:   g.teamAnswerFor(teamID, roundIndex, questionIndex),
+		})
+	}
+	return result
+}
+
+// teamAnswerFor returns a team's submitted answer for a specific question, or empty string if not submitted.
+// Must be called with at least a read lock held.
+func (g *GameSession) teamAnswerFor(teamID string, roundIndex, questionIndex int) string {
+	for _, sub := range g.submissions[teamID] {
+		if sub.RoundIndex == roundIndex && sub.QuestionIndex == questionIndex {
+			return sub.Answer
+		}
+	}
+	return ""
 }
 
 // FinalScores returns the cumulative scores across all rounds.

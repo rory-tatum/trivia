@@ -271,23 +271,25 @@ func (hh *HostHandler) handleCeremonyShowQuestion(_ context.Context, client *hub
 
 	roundIndex := session.CurrentRoundIndex()
 
-	// Transition to ceremony on first call (questionIndex == 0), or advance.
-	if payload.QuestionIndex == 0 {
-		if err := session.StartCeremony(); err != nil {
-			_ = hh.hub.Send(client, hub.NewErrorEvent("ceremony_failed", err.Error()))
-			return
-		}
-	} else {
-		if err := session.AdvanceCeremony(payload.QuestionIndex); err != nil {
-			_ = hh.hub.Send(client, hub.NewErrorEvent("ceremony_failed", err.Error()))
-			return
-		}
+	// Transition to ceremony on the first call (questionIndex == 0), or advance to the next.
+	if err := hh.advanceCeremonyState(session, payload.QuestionIndex); err != nil {
+		_ = hh.hub.Send(client, hub.NewErrorEvent("ceremony_failed", err.Error()))
+		return
 	}
 
 	q := session.CeremonyQuestion(roundIndex, payload.QuestionIndex)
 	evt := hub.NewCeremonyQuestionShownEvent(payload.QuestionIndex, q)
 	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
 	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
+}
+
+// advanceCeremonyState starts the ceremony on the first question (index 0),
+// or advances to subsequent questions. Returns an error if the transition fails.
+func (hh *HostHandler) advanceCeremonyState(session *game.GameSession, questionIndex int) error {
+	if questionIndex == 0 {
+		return session.StartCeremony()
+	}
+	return session.AdvanceCeremony(questionIndex)
 }
 
 func (hh *HostHandler) handleCeremonyRevealAnswer(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
