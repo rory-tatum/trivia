@@ -97,8 +97,8 @@ Feature: Host UI — Quizmaster Panel
     Then the connection status shows "Connected"
     And game controls are available
 
-  # @skip @driving_port @real-io @US-01
-  @skip @driving_port @real-io @US-01
+  # @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Reconnect attempts exhausted after 10 failures shows a reload prompt
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid token

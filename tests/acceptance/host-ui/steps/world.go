@@ -82,6 +82,13 @@ type World struct {
 	// connectionDropped is true when the host connection was force-closed by the driver.
 	connectionDropped bool
 
+	// reconnectExhausted is true when the WsClient RECONNECT_FAILED event is modelled:
+	// 10 consecutive close events without a successful handshake have been simulated.
+	reconnectExhausted bool
+
+	// reconnectFailureCount tracks the number of consecutive reconnect failures simulated.
+	reconnectFailureCount int
+
 	// currentRoundIndex is the 0-based index of the active round (set when a round is started).
 	// A value >= 0 indicates a round is in progress; -1 means no round has started.
 	currentRoundIndex int
