@@ -99,6 +99,76 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-04-15T04:50:27Z"
+    },
+    {
+      "sid": "01-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:50:37Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:51:45Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:52:08Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: client-side validation guard \u2014 no domain logic to decompose",
+      "t": "2026-04-15T04:52:08Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:52:11Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:52:18Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:54:51Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "RED_ACCEPTANCE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring preserves behavior",
+      "t": "2026-04-15T04:54:55Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: no unit tests in this package",
+      "t": "2026-04-15T04:54:55Z"
+    },
+    {
+      "sid": "refactor-L1-L4",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-15T04:54:58Z"
     }
   ]
 }

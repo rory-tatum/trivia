@@ -362,12 +362,11 @@ func titleCasePart(part string) string {
 	if part == "" {
 		return part
 	}
-	// Split into alpha prefix and digit suffix.
-	i := len(part)
-	for i > 0 && part[i-1] >= '0' && part[i-1] <= '9' {
-		i--
+	digitStart := len(part)
+	for digitStart > 0 && part[digitStart-1] >= '0' && part[digitStart-1] <= '9' {
+		digitStart--
 	}
-	alpha, digits := part[:i], part[i:]
+	alpha, digits := part[:digitStart], part[digitStart:]
 	if alpha == "" {
 		return digits
 	}
