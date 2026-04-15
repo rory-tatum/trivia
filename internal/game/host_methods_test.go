@@ -1,11 +1,15 @@
 package game_test
 
 // Tests for host-specific GameSession methods added in the host-ui feature:
-//   - RoundName
-//   - RoundQuestionCount
-//   - ScoringData
-//   - CeremonyQuestion
-//   - CeremonyAnswer
+//   - RoundName         (added in host-ui feature)
+//   - RoundQuestionCount (added in host-ui feature)
+//   - ScoringData       (added in host-ui feature)
+//   - CeremonyQuestion  (pre-existing method, first unit tests added here)
+//   - CeremonyAnswer    (pre-existing method, first unit tests added here)
+//
+// CeremonyQuestion and CeremonyAnswer were introduced before this feature (commit fb833a9)
+// and are called by handleCeremonyShowQuestion / handleCeremonyRevealAnswer in
+// internal/handler/host.go. These are the first unit-level tests for those methods.
 
 import (
 	"testing"
@@ -14,8 +18,9 @@ import (
 )
 
 // makeHostTestSession returns a loaded session with two rounds:
-//   round 0: 2 questions
-//   round 1: 1 question
+//
+//	round 0: 2 questions
+//	round 1: 1 question
 func makeHostTestSession(t *testing.T) *game.GameSession {
 	t.Helper()
 	session := game.NewGameSession()
@@ -38,29 +43,30 @@ func makeHostTestSession(t *testing.T) *game.GameSession {
 
 func TestRoundName_ReturnsHumanReadableName(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	if got := session.RoundName(0); got != "Round 1" {
-		t.Errorf("expected round name %q, got %q", "Round 1", got)
+	cases := []struct {
+		idx      int
+		expected string
+	}{
+		{0, "Round 1"},
+		{1, "Round 2"},
 	}
-	if got := session.RoundName(1); got != "Round 2" {
-		t.Errorf("expected round name %q, got %q", "Round 2", got)
-	}
-}
-
-func TestRoundName_OutOfRangeReturnsEmpty(t *testing.T) {
-	session := makeHostTestSession(t)
-
-	for _, idx := range []int{-1, 2, 99} {
-		if got := session.RoundName(idx); got != "" {
-			t.Errorf("expected empty string for out-of-range index %d, got %q", idx, got)
+	for _, c := range cases {
+		if got := session.RoundName(c.idx); got != c.expected {
+			t.Errorf("RoundName(%d): expected %q, got %q", c.idx, c.expected, got)
 		}
 	}
 }
 
-func TestRoundName_QuizNotLoadedReturnsEmpty(t *testing.T) {
-	session := game.NewGameSession()
-	if got := session.RoundName(0); got != "" {
-		t.Errorf("expected empty string when quiz not loaded, got %q", got)
+func TestRoundName_InvalidIndexReturnsEmpty(t *testing.T) {
+	session := makeHostTestSession(t)
+	for _, idx := range []int{-1, 2, 99} {
+		if got := session.RoundName(idx); got != "" {
+			t.Errorf("RoundName(%d): expected empty string, got %q", idx, got)
+		}
+	}
+	unloaded := game.NewGameSession()
+	if got := unloaded.RoundName(0); got != "" {
+		t.Errorf("RoundName(0) on unloaded session: expected empty string, got %q", got)
 	}
 }
 
@@ -68,34 +74,31 @@ func TestRoundName_QuizNotLoadedReturnsEmpty(t *testing.T) {
 
 func TestRoundQuestionCount_ReturnsCorrectCount(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	if got := session.RoundQuestionCount(0); got != 2 {
-		t.Errorf("expected 2 questions in round 0, got %d", got)
+	cases := []struct {
+		round    int
+		expected int
+	}{
+		{0, 2},
+		{1, 1},
 	}
-	if got := session.RoundQuestionCount(1); got != 1 {
-		t.Errorf("expected 1 question in round 1, got %d", got)
+	for _, c := range cases {
+		if got := session.RoundQuestionCount(c.round); got != c.expected {
+			t.Errorf("RoundQuestionCount(%d): expected %d, got %d", c.round, c.expected, got)
+		}
 	}
 }
 
-func TestRoundQuestionCount_OutOfRangeReturnsZero(t *testing.T) {
+func TestRoundQuestionCount_InvalidIndexReturnsZero(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	if got := session.RoundQuestionCount(99); got != 0 {
-		t.Errorf("expected 0 for out-of-range round index, got %d", got)
-	}
-	if got := session.RoundQuestionCount(-1); got != 0 {
-		t.Errorf("expected 0 for negative round index, got %d", got)
-	}
 	// Exact boundary: 2 rounds → index 2 is one past the last valid index.
-	if got := session.RoundQuestionCount(2); got != 0 {
-		t.Errorf("expected 0 for exact-boundary round index 2, got %d", got)
+	for _, idx := range []int{-1, 2, 99} {
+		if got := session.RoundQuestionCount(idx); got != 0 {
+			t.Errorf("RoundQuestionCount(%d): expected 0, got %d", idx, got)
+		}
 	}
-}
-
-func TestRoundQuestionCount_QuizNotLoadedReturnsZero(t *testing.T) {
-	session := game.NewGameSession()
-	if got := session.RoundQuestionCount(0); got != 0 {
-		t.Errorf("expected 0 when quiz not loaded, got %d", got)
+	unloaded := game.NewGameSession()
+	if got := unloaded.RoundQuestionCount(0); got != 0 {
+		t.Errorf("RoundQuestionCount(0) on unloaded session: expected 0, got %d", got)
 	}
 }
 
@@ -159,99 +162,100 @@ func TestScoringData_MissingSubmissionHasEmptyAnswer(t *testing.T) {
 	}
 }
 
-func TestScoringData_OutOfRangeReturnsNil(t *testing.T) {
+func TestScoringData_InvalidIndexReturnsNil(t *testing.T) {
 	session := makeHostTestSession(t)
-	if got := session.ScoringData(99); got != nil {
-		t.Errorf("expected nil for out-of-range round, got %v", got)
-	}
 	// Exact boundary: 2 rounds → index 2 is one past the last valid index.
-	if got := session.ScoringData(2); got != nil {
-		t.Errorf("expected nil for exact-boundary round index 2, got %v", got)
+	for _, idx := range []int{2, 99} {
+		if got := session.ScoringData(idx); got != nil {
+			t.Errorf("ScoringData(%d): expected nil, got %v", idx, got)
+		}
 	}
-}
-
-func TestScoringData_QuizNotLoadedReturnsNil(t *testing.T) {
-	session := game.NewGameSession()
-	if got := session.ScoringData(0); got != nil {
-		t.Errorf("expected nil when quiz not loaded, got %v", got)
+	unloaded := game.NewGameSession()
+	if got := unloaded.ScoringData(0); got != nil {
+		t.Errorf("ScoringData(0) on unloaded session: expected nil, got %v", got)
 	}
 }
 
 // --- CeremonyQuestion ---
+// CeremonyQuestion is a pre-existing method (commit fb833a9) called by
+// handleCeremonyShowQuestion in internal/handler/host.go. These are its first unit tests.
 
-func TestCeremonyQuestion_ReturnsQuestionWithoutAnswer(t *testing.T) {
+func TestCeremonyQuestion_HappyPath(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	q := session.CeremonyQuestion(0, 0)
-	if q.Text != "Capital of France?" {
-		t.Errorf("expected text %q, got %q", "Capital of France?", q.Text)
+	cases := []struct {
+		round    int
+		question int
+		wantText string
+		wantIdx  int
+	}{
+		{0, 0, "Capital of France?", 0},
+		{0, 1, "Capital of Germany?", 1},
 	}
-	// QuestionPublic intentionally has no Answer field — the type itself enforces the strip.
-}
-
-func TestCeremonyQuestion_ReturnsCorrectIndex(t *testing.T) {
-	session := makeHostTestSession(t)
-
-	q := session.CeremonyQuestion(0, 1)
-	if q.Index != 1 {
-		t.Errorf("expected index 1, got %d", q.Index)
-	}
-}
-
-func TestCeremonyQuestion_OutOfRangeReturnsEmpty(t *testing.T) {
-	session := makeHostTestSession(t)
-
-	q := session.CeremonyQuestion(0, 99)
-	if q.Text != "" {
-		t.Errorf("expected empty QuestionPublic for out-of-range index, got %q", q.Text)
-	}
-	q2 := session.CeremonyQuestion(99, 0)
-	if q2.Text != "" {
-		t.Errorf("expected empty QuestionPublic for out-of-range round, got %q", q2.Text)
+	for _, c := range cases {
+		q := session.CeremonyQuestion(c.round, c.question)
+		if q.Text != c.wantText {
+			t.Errorf("CeremonyQuestion(%d,%d).Text: expected %q, got %q", c.round, c.question, c.wantText, q.Text)
+		}
+		if q.Index != c.wantIdx {
+			t.Errorf("CeremonyQuestion(%d,%d).Index: expected %d, got %d", c.round, c.question, c.wantIdx, q.Index)
+		}
+		// QuestionPublic intentionally has no Answer field — the type itself enforces the strip.
 	}
 }
 
-func TestCeremonyQuestion_QuizNotLoadedReturnsEmpty(t *testing.T) {
-	session := game.NewGameSession()
-	q := session.CeremonyQuestion(0, 0)
-	if q.Text != "" {
-		t.Errorf("expected empty QuestionPublic when quiz not loaded, got %q", q.Text)
+func TestCeremonyQuestion_InvalidIndexReturnsEmpty(t *testing.T) {
+	session := makeHostTestSession(t)
+	cases := []struct{ round, question int }{
+		{0, 99},  // question out of range
+		{99, 0},  // round out of range
+	}
+	for _, c := range cases {
+		if q := session.CeremonyQuestion(c.round, c.question); q.Text != "" {
+			t.Errorf("CeremonyQuestion(%d,%d): expected empty QuestionPublic, got text %q", c.round, c.question, q.Text)
+		}
+	}
+	unloaded := game.NewGameSession()
+	if q := unloaded.CeremonyQuestion(0, 0); q.Text != "" {
+		t.Errorf("CeremonyQuestion(0,0) on unloaded session: expected empty, got %q", q.Text)
 	}
 }
 
 // --- CeremonyAnswer ---
+// CeremonyAnswer is a pre-existing method (commit fb833a9) called by
+// handleCeremonyRevealAnswer in internal/handler/host.go. These are its first unit tests.
 
 func TestCeremonyAnswer_ReturnsCorrectAnswer(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	answer := session.CeremonyAnswer(0, 0)
-	if answer != "Paris" {
-		t.Errorf("expected answer %q, got %q", "Paris", answer)
+	cases := []struct {
+		round    int
+		question int
+		expected string
+	}{
+		{0, 0, "Paris"},
+		{0, 1, "Berlin"},
 	}
-	answer2 := session.CeremonyAnswer(0, 1)
-	if answer2 != "Berlin" {
-		t.Errorf("expected answer %q, got %q", "Berlin", answer2)
+	for _, c := range cases {
+		if got := session.CeremonyAnswer(c.round, c.question); got != c.expected {
+			t.Errorf("CeremonyAnswer(%d,%d): expected %q, got %q", c.round, c.question, c.expected, got)
+		}
 	}
 }
 
-func TestCeremonyAnswer_OutOfRangeReturnsEmpty(t *testing.T) {
+func TestCeremonyAnswer_InvalidIndexReturnsEmpty(t *testing.T) {
 	session := makeHostTestSession(t)
-
-	if got := session.CeremonyAnswer(0, 99); got != "" {
-		t.Errorf("expected empty string for out-of-range question, got %q", got)
-	}
-	if got := session.CeremonyAnswer(99, 0); got != "" {
-		t.Errorf("expected empty string for out-of-range round, got %q", got)
-	}
 	// Exact boundary: round 0 has 2 questions → index 2 is one past the last valid.
-	if got := session.CeremonyAnswer(0, 2); got != "" {
-		t.Errorf("expected empty string for exact-boundary question index 2, got %q", got)
+	cases := []struct{ round, question int }{
+		{0, 99}, // question far out of range
+		{99, 0}, // round out of range
+		{0, 2},  // exact boundary
 	}
-}
-
-func TestCeremonyAnswer_QuizNotLoadedReturnsEmpty(t *testing.T) {
-	session := game.NewGameSession()
-	if got := session.CeremonyAnswer(0, 0); got != "" {
-		t.Errorf("expected empty string when quiz not loaded, got %q", got)
+	for _, c := range cases {
+		if got := session.CeremonyAnswer(c.round, c.question); got != "" {
+			t.Errorf("CeremonyAnswer(%d,%d): expected empty string, got %q", c.round, c.question, got)
+		}
+	}
+	unloaded := game.NewGameSession()
+	if got := unloaded.CeremonyAnswer(0, 0); got != "" {
+		t.Errorf("CeremonyAnswer(0,0) on unloaded session: expected empty string, got %q", got)
 	}
 }
