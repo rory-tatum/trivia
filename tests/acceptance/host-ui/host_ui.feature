@@ -201,8 +201,8 @@ Feature: Host UI — Quizmaster Panel
     And the "End Round" button is visible
     And the round panel shows "5 of 5 revealed"
 
-  # @skip @driving_port @real-io @US-03
-  @skip @driving_port @real-io @US-03
+  # @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Ending the round sends the end command followed by the scoring command
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "round-test.yaml" with 1 round of 5 text questions
