@@ -242,8 +242,8 @@ Feature: Host UI — Quizmaster Panel
     Then the running total for "The Brainiacs" increases by 1 point
     And the "Correct" button for "The Brainiacs" on question 1 is visually marked as applied
 
-  # @skip @driving_port @real-io @US-04
-  @skip @driving_port @real-io @US-04
+  # @driving_port @real-io @US-04
+  @driving_port @real-io @US-04
   Scenario: Marking a team answer as wrong leaves the running total unchanged
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "score-test.yaml" with 1 round of 2 text questions

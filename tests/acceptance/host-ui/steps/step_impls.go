@@ -988,8 +988,27 @@ func (w *World) thenRunningTotalReflectsCorrectCount(teamName string, count int)
 }
 
 func (w *World) thenRunningTotalUnchanged(teamName string) error {
-	// Observable: no score_updated event for this team, or score_updated with unchanged total.
-	return godog.ErrPending
+	// Observable: score_updated event received for this team with running_total == 0
+	// (no prior correct answers in this scenario, so total is unchanged at 0).
+	teamID := w.teamID(teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		msgs := w.messagesFor(roleHost)
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Event != eventScoreUpdated {
+				continue
+			}
+			tid, _ := msgs[i].Payload["team_id"].(string)
+			if tid != teamID {
+				continue
+			}
+			total, _ := msgs[i].Payload["running_total"].(float64)
+			if int(total) == 0 {
+				return true, nil
+			}
+			return false, fmt.Errorf("running total for %q is %v, expected 0 (unchanged)", teamName, total)
+		}
+		return false, fmt.Errorf("score_updated event not received for team %q", teamName)
+	})
 }
 
 func (w *World) thenVerdictButtonMarked(teamName string, questionIndex int, verdict string) error {
