@@ -144,8 +144,8 @@ Feature: Host UI — Quizmaster Panel
     And the file path input remains editable
     And no "Start Round" button is visible
 
-  # @skip @US-02
-  @skip @US-02
+  # @US-02
+  @US-02
   Scenario: Submitting an empty file path is blocked before sending to the server
     Given Marcus has opened the quizmaster panel with a valid host token
     When Marcus submits the load quiz form with an empty file path
