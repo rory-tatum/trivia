@@ -112,8 +112,8 @@ Feature: Host UI — Quizmaster Panel
   # US-02: Load Quiz with Confirmation
   # ============================================================================
 
-  # @skip @driving_port @real-io @US-02
-  @skip @driving_port @real-io @US-02
+  # @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Load quiz form is visible immediately after connecting
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When Marcus opens the quizmaster panel with a valid host token

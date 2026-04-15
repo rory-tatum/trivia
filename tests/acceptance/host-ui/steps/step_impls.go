@@ -653,6 +653,16 @@ func (w *World) thenButtonVisible(label string) error {
 		}
 		return nil
 
+	case label == "Load Quiz":
+		// "Load Quiz" button is visible in the lobby phase before a quiz has been loaded.
+		if w.connections["host"] == nil || !w.connections["host"].Connected {
+			return fmt.Errorf("%q button not visible: host not connected", label)
+		}
+		if w.quizLoaded {
+			return fmt.Errorf("%q button not visible: quiz already loaded, form replaced", label)
+		}
+		return nil
+
 	case label == "Reload":
 		// "Reload" button visible when the reconnect exhaustion overlay is shown.
 		return w.thenReloadButtonVisible()
