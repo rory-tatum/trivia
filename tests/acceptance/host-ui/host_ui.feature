@@ -266,8 +266,8 @@ Feature: Host UI — Quizmaster Panel
     And the "Start Round 2" button is visible
     And the "End Game" button is visible
 
-  # @skip @driving_port @real-io @US-04
-  @skip @driving_port @real-io @US-04
+  # @driving_port @real-io @US-04
+  @driving_port @real-io @US-04
   Scenario: Marcus can publish scores without marking all answers — partial scoring allowed
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "partial-score.yaml" with 1 round of 3 text questions
