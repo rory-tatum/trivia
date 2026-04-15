@@ -231,7 +231,7 @@ Feature: Host UI — Quizmaster Panel
     And each team row has a "Correct" button and a "Wrong" button
 
   # @skip @driving_port @real-io @US-04
-  @skip @driving_port @real-io @US-04
+  @driving_port @real-io @US-04
   Scenario: Marking a team answer as correct increases the running total and highlights the button
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "score-test.yaml" with 1 round of 2 text questions
