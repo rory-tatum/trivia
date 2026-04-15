@@ -19,6 +19,31 @@ import (
 // that do not specify an explicit question count (e.g. givenScoringOpen, givenAllAnswersMarked).
 const defaultQuestionCount = 2
 
+// Connection role keys used as map keys in World.connections and World.receivedMessages.
+const (
+	roleHost    = "host"
+	roleDisplay = "display"
+	rolePlay    = "play"
+)
+
+// Event type names sent by the server over WebSocket.
+const (
+	eventQuizLoaded            = "quiz_loaded"
+	eventRoundStarted          = "round_started"
+	eventQuestionRevealed      = "question_revealed"
+	eventScoringData           = "scoring_data"
+	eventScoreUpdated          = "score_updated"
+	eventScoresPublished      = "scores_published"
+	eventRoundScoresPublished = "round_scores_published"
+	eventCeremonyQuestionShown = "ceremony_question_shown"
+	eventCeremonyAnswerReveal  = "ceremony_answer_revealed"
+	eventGameOver              = "game_over"
+	eventError                 = "error"
+)
+
+// eventWaitTimeout is the default deadline used by waitForEvent calls in Then steps.
+const eventWaitTimeout = 2 * time.Second
+
 // =============================================================================
 // Given implementations — arrange preconditions
 // =============================================================================
@@ -60,11 +85,11 @@ func (w *World) givenMarcusConnectsToHostPanel() error {
 		}
 	}
 	// Idempotent: if already connected, reuse the existing connection.
-	if conn, ok := w.connections["host"]; ok && conn != nil && conn.Connected {
+	if conn, ok := w.connections[roleHost]; ok && conn != nil && conn.Connected {
 		return nil
 	}
 	driver := NewHostUIDriver(w.server, w.hostToken, w)
-	w.connections["host"] = &WSConnection{Role: "host", Connected: true, driver: driver}
+	w.connections[roleHost] = &WSConnection{Role: roleHost, Connected: true, driver: driver}
 	if err := driver.ConnectHost(w.ctx); err != nil {
 		return err
 	}
@@ -103,8 +128,8 @@ func (w *World) givenTeamConnected(teamName string) error {
 		return err
 	}
 	driver := NewHostUIDriver(w.server, w.hostToken, w)
-	key := connectionKey("play", teamName)
-	w.connections[key] = &WSConnection{Role: "play", Name: teamName, Connected: true, driver: driver}
+	key := connectionKey(rolePlay, teamName)
+	w.connections[key] = &WSConnection{Role: rolePlay, Name: teamName, Connected: true, driver: driver}
 	if err := driver.ConnectPlay(w.ctx, teamName); err != nil {
 		return err
 	}
@@ -118,12 +143,12 @@ func (w *World) givenDisplayConnected() error {
 		}
 	}
 	driver := NewHostUIDriver(w.server, w.hostToken, w)
-	w.connections["display"] = &WSConnection{Role: "display", Connected: true, driver: driver}
+	w.connections[roleDisplay] = &WSConnection{Role: roleDisplay, Connected: true, driver: driver}
 	return driver.ConnectDisplay(w.ctx)
 }
 
 func (w *World) givenMarcusLoadedQuiz(filename string) error {
-	if w.connections["host"] == nil {
+	if w.connections[roleHost] == nil {
 		if err := w.givenMarcusConnectsToHostPanel(); err != nil {
 			return err
 		}
@@ -132,7 +157,7 @@ func (w *World) givenMarcusLoadedQuiz(filename string) error {
 }
 
 func (w *World) givenMarcusStartedRound(roundIndex int) error {
-	if w.connections["host"] == nil {
+	if w.connections[roleHost] == nil {
 		if err := w.givenMarcusConnectsToHostPanel(); err != nil {
 			return err
 		}
@@ -219,7 +244,7 @@ func (w *World) givenScoresPublished(roundIndex int) error {
 }
 
 func (w *World) givenRoundFullyComplete(roundIndex int) error {
-	if err := w.givenRoundEnded(roundIndex, 2); err != nil {
+	if err := w.givenRoundEnded(roundIndex, defaultQuestionCount); err != nil {
 		return err
 	}
 	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
@@ -234,12 +259,17 @@ func (w *World) givenRoundFullyComplete(roundIndex int) error {
 	if err := w.hostDriver().HostPublishScores(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	// Walk through ceremony.
-	for i := 0; i < 2; i++ {
-		if err := w.hostDriver().HostCeremonyShowQuestion(w.ctx, i); err != nil {
+	return w.runCeremony(defaultQuestionCount)
+}
+
+// runCeremony walks through show-question / reveal-answer for each question in order.
+func (w *World) runCeremony(questionCount int) error {
+	driver := w.hostDriver()
+	for i := 0; i < questionCount; i++ {
+		if err := driver.HostCeremonyShowQuestion(w.ctx, i); err != nil {
 			return err
 		}
-		if err := w.hostDriver().HostCeremonyRevealAnswer(w.ctx, i); err != nil {
+		if err := driver.HostCeremonyRevealAnswer(w.ctx, i); err != nil {
 			return err
 		}
 	}
@@ -266,10 +296,7 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 }
 
 func (w *World) givenMarcusOnCeremonyPanel(roundIndex int) error {
-	if err := w.givenRoundFullyComplete(roundIndex); err != nil {
-		return err
-	}
-	return nil
+	return w.givenRoundFullyComplete(roundIndex)
 }
 
 func (w *World) givenCeremonyShowingQuestion(questionIndex int) error {
@@ -280,21 +307,13 @@ func (w *World) givenCeremonyComplete(roundIndex, questionCount int) error {
 	if err := w.givenMarcusOnCeremonyPanel(roundIndex); err != nil {
 		return err
 	}
-	for i := 0; i < questionCount; i++ {
-		if err := w.hostDriver().HostCeremonyShowQuestion(w.ctx, i); err != nil {
-			return err
-		}
-		if err := w.hostDriver().HostCeremonyRevealAnswer(w.ctx, i); err != nil {
-			return err
-		}
-	}
-	return nil
+	return w.runCeremony(questionCount)
 }
 
 // waitForScoringData blocks until the scoring_data event arrives on the host connection.
 // Used by Given steps that drive the server into the scoring phase.
 func (w *World) waitForScoringData() error {
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("timed out waiting for scoring_data event")
 	}
@@ -306,7 +325,7 @@ func (w *World) ensureQuizLoaded() error {
 	if w.quizLoaded {
 		return nil
 	}
-	if w.connections["host"] == nil {
+	if w.connections[roleHost] == nil {
 		if err := w.givenMarcusConnectsToHostPanel(); err != nil {
 			return err
 		}
@@ -342,16 +361,15 @@ func (w *World) whenMarcusLoadsQuiz(filename string) error {
 	if err := driver.HostLoadQuiz(w.ctx, path); err != nil {
 		return err
 	}
-	msg, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
+	_, ok = w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
 	if !ok {
 		// Check for error event.
-		if w.hasReceivedEvent("host", "error") {
+		if w.hasReceivedEvent(roleHost, eventError) {
 			return nil // Error path — let Then steps assert.
 		}
 		return fmt.Errorf("timed out waiting for quiz_loaded event")
 	}
 	w.quizLoaded = true
-	_ = msg
 	return nil
 }
 
@@ -384,14 +402,17 @@ func (w *World) whenWebSocketHandshakeCompletes() error {
 	return nil
 }
 
+// defaultHostToken is the server token used when starting a server in auth-failure scenarios.
+const defaultHostToken = "pub-night-secret"
+
 func (w *World) whenMarcusConnectsWithToken(token string) error {
 	if w.server == nil {
-		if err := w.givenServerRunning("pub-night-secret"); err != nil {
+		if err := w.givenServerRunning(defaultHostToken); err != nil {
 			return err
 		}
 	}
 	driver := NewHostUIDriver(w.server, token, w)
-	w.connections["host"] = &WSConnection{Role: "host", Connected: false, driver: driver}
+	w.connections[roleHost] = &WSConnection{Role: roleHost, Connected: false, driver: driver}
 	err := driver.ConnectHostWithToken(w.ctx, token)
 	if err != nil {
 		// Auth failure is permanent — WsClient does not retry on 403.
@@ -520,7 +541,7 @@ func (w *World) whenMarcusSendsRevealOutOfOrder(questionIndex int) error {
 func (w *World) thenHostPanelShowsConnected() error {
 	// Observable outcome: the host WebSocket connection is established.
 	// The WsClient emits CONNECTED after onOpen fires.
-	if w.connections["host"] == nil {
+	if w.connections[roleHost] == nil {
 		return fmt.Errorf("quizmaster panel: no connection established")
 	}
 	return nil
@@ -529,7 +550,7 @@ func (w *World) thenHostPanelShowsConnected() error {
 func (w *World) thenConnectionStatusConnecting() error {
 	// Observable: the dial was initiated. The "Connecting..." phase precedes the
 	// first server message — verified by confirming the connection exists.
-	conn, ok := w.connections["host"]
+	conn, ok := w.connections[roleHost]
 	if !ok || conn == nil {
 		return fmt.Errorf("connection status: no WebSocket connection initiated")
 	}
@@ -599,7 +620,7 @@ func (w *World) thenLoadQuizFormVisible() error {
 	// Observable: after connecting, the host panel is in quiz_loaded=false state,
 	// meaning the load quiz form should be presented.
 	// Verified by confirming the host is connected and no quiz has been loaded.
-	if w.connections["host"] == nil {
+	if w.connections[roleHost] == nil {
 		return fmt.Errorf("not connected — load quiz form cannot be visible")
 	}
 	return nil
@@ -620,11 +641,11 @@ func (w *World) thenButtonVisible(label string) error {
 	switch {
 	case strings.HasPrefix(label, "Start Round"):
 		// "Start Round 1" (or "Start Round N: ...") visible after quiz_loaded, before round_started.
-		_, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
+		_, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
 		if !ok {
 			return fmt.Errorf("%q button not visible: quiz_loaded event not received", label)
 		}
-		if w.hasReceivedEvent("host", "round_started") {
+		if w.hasReceivedEvent(roleHost, eventRoundStarted) {
 			return fmt.Errorf("%q button not visible: round has already started", label)
 		}
 		return nil
@@ -632,9 +653,9 @@ func (w *World) thenButtonVisible(label string) error {
 	case label == "End Round":
 		// "End Round" button visible when all questions in the active round have been revealed.
 		// The last question_revealed event carries revealed_count == total_questions.
-		msgs := w.messagesFor("host")
+		msgs := w.messagesFor(roleHost)
 		for i := len(msgs) - 1; i >= 0; i-- {
-			if msgs[i].Event == "question_revealed" {
+			if msgs[i].Event == eventQuestionRevealed {
 				revealed, hasRevealed := msgs[i].Payload["revealed_count"].(float64)
 				total, hasTotal := msgs[i].Payload["total_questions"].(float64)
 				if hasRevealed && hasTotal && revealed == total && total > 0 {
@@ -647,7 +668,7 @@ func (w *World) thenButtonVisible(label string) error {
 
 	case label == "End Game":
 		// "End Game" button visible after scores have been published for the final round.
-		_, ok := w.waitForEvent("host", "round_scores_published", 2*time.Second)
+		_, ok := w.waitForEvent(roleHost, eventRoundScoresPublished, eventWaitTimeout)
 		if !ok {
 			return fmt.Errorf("%q button not visible: round_scores_published event not received", label)
 		}
@@ -655,7 +676,7 @@ func (w *World) thenButtonVisible(label string) error {
 
 	case label == "Load Quiz":
 		// "Load Quiz" button is visible in the lobby phase before a quiz has been loaded.
-		if w.connections["host"] == nil || !w.connections["host"].Connected {
+		if w.connections[roleHost] == nil || !w.connections[roleHost].Connected {
 			return fmt.Errorf("%q button not visible: host not connected", label)
 		}
 		if w.quizLoaded {
@@ -678,7 +699,7 @@ func (w *World) thenButtonVisible(label string) error {
 
 func (w *World) thenStartRoundButtonNotVisible() error {
 	// Observable: no round_started event has been received, so Start Round should not be shown.
-	if w.hasReceivedEvent("host", "round_started") {
+	if w.hasReceivedEvent(roleHost, eventRoundStarted) {
 		return fmt.Errorf("round already started — Start Round button should not be visible at this point")
 	}
 	return nil
@@ -686,7 +707,7 @@ func (w *World) thenStartRoundButtonNotVisible() error {
 
 func (w *World) thenQuizConfirmationVisible() error {
 	// Observable: quiz_loaded event received with confirmation field populated.
-	msg, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("quiz_loaded event not received — quiz confirmation not visible")
 	}
@@ -744,27 +765,16 @@ func (w *World) thenRoundPanelVisible(revealed, total int) error {
 	// Observable: w.revealedCount == revealed and w.totalQuestions == total,
 	// populated from round_started and question_revealed events.
 	// Uses polling to tolerate WebSocket message propagation latency.
-	deadline := time.After(2 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline:
-			w.mu.Lock()
-			gotRevealed := w.revealedCount
-			gotTotal := w.totalQuestions
-			w.mu.Unlock()
-			return fmt.Errorf("expected %d of %d revealed, got %d of %d (timed out)", revealed, total, gotRevealed, gotTotal)
-		case <-ticker.C:
-			w.mu.Lock()
-			gotRevealed := w.revealedCount
-			gotTotal := w.totalQuestions
-			w.mu.Unlock()
-			if gotRevealed == revealed && gotTotal == total {
-				return nil
-			}
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		w.mu.Lock()
+		gotRevealed := w.revealedCount
+		gotTotal := w.totalQuestions
+		w.mu.Unlock()
+		if gotRevealed == revealed && gotTotal == total {
+			return true, nil
 		}
-	}
+		return false, fmt.Errorf("expected %d of %d revealed, got %d of %d (timed out)", revealed, total, gotRevealed, gotTotal)
+	})
 }
 
 func (w *World) thenRoundPanelShowsNameAndCounter(roundName string, revealed, total int) error {
@@ -783,7 +793,7 @@ func (w *World) thenRoundPanelShowsNameAndCounter(roundName string, revealed, to
 func (w *World) thenRevealButtonVisible() error {
 	// Observable: round is active (round_started received) and not all questions revealed
 	// (revealedCount < totalQuestions — the Reveal Next Question button is visible only then).
-	if !w.hasReceivedEvent("host", "round_started") {
+	if !w.hasReceivedEvent(roleHost, eventRoundStarted) {
 		return fmt.Errorf("round has not started — Reveal Next Question button should not be visible")
 	}
 	w.mu.Lock()
@@ -800,92 +810,64 @@ func (w *World) thenRevealButtonNotVisible() error {
 	// Observable: all questions have been revealed — the Reveal Next Question button
 	// is no longer visible when revealedCount >= totalQuestions.
 	// Poll to tolerate WebSocket message propagation latency from the final reveal.
-	deadline := time.After(2 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline:
-			w.mu.Lock()
-			revealed := w.revealedCount
-			total := w.totalQuestions
-			w.mu.Unlock()
-			return fmt.Errorf("only %d of %d questions revealed — Reveal Next Question button is still visible", revealed, total)
-		case <-ticker.C:
-			w.mu.Lock()
-			revealed := w.revealedCount
-			total := w.totalQuestions
-			w.mu.Unlock()
-			if total > 0 && revealed >= total {
-				return nil
-			}
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		w.mu.Lock()
+		revealed := w.revealedCount
+		total := w.totalQuestions
+		w.mu.Unlock()
+		if total > 0 && revealed >= total {
+			return true, nil
 		}
-	}
+		return false, fmt.Errorf("only %d of %d questions revealed — Reveal Next Question button is still visible", revealed, total)
+	})
 }
 
 func (w *World) thenFirstQuestionInList() error {
 	// Observable: at least one question_revealed event received and its question_text is non-empty.
 	// Poll to tolerate WebSocket message propagation latency.
-	deadline := time.After(2 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-deadline:
-			w.mu.Lock()
-			count := len(w.revealedQuestions)
-			w.mu.Unlock()
-			if count == 0 {
-				return fmt.Errorf("no question_revealed events received: revealedQuestions is empty")
-			}
-			w.mu.Lock()
-			first := w.revealedQuestions[0]
-			w.mu.Unlock()
-			return fmt.Errorf("first revealed question text is empty (got %q)", first)
-		case <-ticker.C:
-			w.mu.Lock()
-			count := len(w.revealedQuestions)
-			first := ""
-			if count > 0 {
-				first = w.revealedQuestions[0]
-			}
-			w.mu.Unlock()
-			if count >= 1 && first != "" {
-				return nil
-			}
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		w.mu.Lock()
+		count := len(w.revealedQuestions)
+		first := ""
+		if count > 0 {
+			first = w.revealedQuestions[0]
 		}
-	}
+		w.mu.Unlock()
+		if count == 0 {
+			return false, fmt.Errorf("no question_revealed events received: revealedQuestions is empty")
+		}
+		if first == "" {
+			return false, fmt.Errorf("first revealed question text is empty")
+		}
+		return true, nil
+	})
 }
 
 func (w *World) thenRevealedQuestionsCount(count int) error {
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
+	const revealTimeout = 3 * time.Second
+	return pollUntil(revealTimeout, 20*time.Millisecond, func() (bool, error) {
 		w.mu.Lock()
-		n := len(w.revealedQuestions)
+		questions := make([]string, len(w.revealedQuestions))
+		copy(questions, w.revealedQuestions)
 		w.mu.Unlock()
-		if n >= count {
-			break
+		if len(questions) < count {
+			return false, fmt.Errorf("expected %d revealed questions, got %d (timed out)", count, len(questions))
 		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	w.mu.Lock()
-	questions := make([]string, len(w.revealedQuestions))
-	copy(questions, w.revealedQuestions)
-	w.mu.Unlock()
-	if len(questions) != count {
-		return fmt.Errorf("expected %d revealed questions, got %d", count, len(questions))
-	}
-	for i, q := range questions {
-		if q == "" {
-			return fmt.Errorf("revealed question at index %d is empty", i)
+		if len(questions) != count {
+			return false, fmt.Errorf("expected %d revealed questions, got %d", count, len(questions))
 		}
-	}
-	return nil
+		for i, q := range questions {
+			if q == "" {
+				return false, fmt.Errorf("revealed question at index %d is empty", i)
+			}
+		}
+		return true, nil
+	})
 }
 
 func (w *World) thenRoundStartedConfirmed(roundIndex int) error {
 	// Observable: round_started event received on host connection.
-	msg, ok := w.waitForEvent("host", "round_started", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventRoundStarted, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("round_started event not received on host connection")
 	}
@@ -899,7 +881,7 @@ func (w *World) thenRoundStartedConfirmed(roundIndex int) error {
 
 func (w *World) thenRoundEndedConfirmed(roundIndex int) error {
 	// Observable: scoring_data received (IC-4 gate for scoring phase).
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scoring_data event not received after ending round %d", roundIndex)
 	}
@@ -908,7 +890,7 @@ func (w *World) thenRoundEndedConfirmed(roundIndex int) error {
 
 func (w *World) thenScoringPanelVisible() error {
 	// Observable: scoring_data received — this is the phase trigger for scoring.
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scoring_data event not received — scoring panel cannot be visible")
 	}
@@ -917,7 +899,7 @@ func (w *World) thenScoringPanelVisible() error {
 
 func (w *World) thenScoringPanelShowsCorrectAnswers() error {
 	// Observable: scoring_data payload contains questions with correct_answer fields.
-	msg, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scoring_data not received")
 	}
@@ -939,7 +921,7 @@ func (w *World) thenScoringPanelShowsCorrectAnswers() error {
 
 func (w *World) thenScoringPanelShowsTeamSubmissions(teamName string) error {
 	// Observable: scoring_data payload includes submissions for the named team.
-	msg, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scoring_data not received")
 	}
@@ -967,7 +949,7 @@ func (w *World) thenScoringRowsHaveVerdictButtons() error {
 
 func (w *World) thenRunningTotalIncreasedBy(teamName string, points int) error {
 	// Observable: score_updated event received for the team.
-	_, ok := w.waitForEvent("host", "score_updated", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("score_updated event not received for team %q", teamName)
 	}
@@ -979,37 +961,30 @@ func (w *World) thenRunningTotalReflectsCorrectCount(teamName string, count int)
 	// Poll until we see a matching event or the deadline elapses.
 	// Earlier score_updated events (running_total < count) are expected and skipped.
 	teamID := w.teamID(teamName)
-	deadline := time.After(2 * time.Second)
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
 	var lastTotal float64 = -1
-	for {
-		select {
-		case <-deadline:
-			if lastTotal < 0 {
-				return fmt.Errorf("score_updated event not received for team %q", teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		msgs := w.messagesFor(roleHost)
+		for i := len(msgs) - 1; i >= 0; i-- {
+			if msgs[i].Event != eventScoreUpdated {
+				continue
 			}
-			return fmt.Errorf("running total for %q is %v, expected %d correct", teamName, lastTotal, count)
-		case <-ticker.C:
-			msgs := w.messagesFor("host")
-			for i := len(msgs) - 1; i >= 0; i-- {
-				if msgs[i].Event != "score_updated" {
-					continue
-				}
-				tid, _ := msgs[i].Payload["team_id"].(string)
-				if tid != teamID {
-					continue
-				}
-				total, _ := msgs[i].Payload["running_total"].(float64)
-				lastTotal = total
-				if int(total) == count {
-					return nil
-				}
-				// Most recent event for this team does not match yet; keep polling.
-				break
+			tid, _ := msgs[i].Payload["team_id"].(string)
+			if tid != teamID {
+				continue
 			}
+			total, _ := msgs[i].Payload["running_total"].(float64)
+			lastTotal = total
+			if int(total) == count {
+				return true, nil
+			}
+			// Most recent event for this team does not match yet; keep polling.
+			break
 		}
-	}
+		if lastTotal < 0 {
+			return false, fmt.Errorf("score_updated event not received for team %q", teamName)
+		}
+		return false, fmt.Errorf("running total for %q is %v, expected %d correct", teamName, lastTotal, count)
+	})
 }
 
 func (w *World) thenRunningTotalUnchanged(teamName string) error {
@@ -1019,7 +994,7 @@ func (w *World) thenRunningTotalUnchanged(teamName string) error {
 
 func (w *World) thenVerdictButtonMarked(teamName string, questionIndex int, verdict string) error {
 	// Observable: score_updated event received after marking verdict.
-	_, ok := w.waitForEvent("host", "score_updated", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("score_updated not received after marking %s as %s", teamName, verdict)
 	}
@@ -1028,7 +1003,7 @@ func (w *World) thenVerdictButtonMarked(teamName string, questionIndex int, verd
 
 func (w *World) thenRoundScoreSummaryVisible() error {
 	// Observable: scores_published event received.
-	_, ok := w.waitForEvent("host", "scores_published", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoresPublished, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scores_published event not received — round score summary not visible")
 	}
@@ -1036,7 +1011,7 @@ func (w *World) thenRoundScoreSummaryVisible() error {
 }
 
 func (w *World) thenPublishAcceptedWithoutError() error {
-	_, ok := w.waitForEvent("host", "scores_published", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventScoresPublished, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("scores_published not received — publish was not accepted")
 	}
@@ -1045,7 +1020,7 @@ func (w *World) thenPublishAcceptedWithoutError() error {
 
 func (w *World) thenCeremonyPanelVisible() error {
 	// Observable: ceremony_question_shown event received (first show_question triggers ceremony).
-	_, ok := w.waitForEvent("host", "ceremony_question_shown", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventCeremonyQuestionShown, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("ceremony_question_shown not received — ceremony panel not visible")
 	}
@@ -1058,7 +1033,7 @@ func (w *World) thenCeremonyProgressShows(shown, total int) error {
 
 func (w *World) thenDisplayReceivesQuestion(questionIndex int) error {
 	// Observable: display connection received ceremony_question_shown.
-	_, ok := w.waitForEvent("display", "ceremony_question_shown", 2*time.Second)
+	_, ok := w.waitForEvent(roleDisplay, eventCeremonyQuestionShown, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("display did not receive ceremony_question_shown for question %d", questionIndex)
 	}
@@ -1067,7 +1042,7 @@ func (w *World) thenDisplayReceivesQuestion(questionIndex int) error {
 
 func (w *World) thenDisplayReceivesAnswer(questionIndex int) error {
 	// Observable: display connection received ceremony_answer_revealed.
-	_, ok := w.waitForEvent("display", "ceremony_answer_revealed", 2*time.Second)
+	_, ok := w.waitForEvent(roleDisplay, eventCeremonyAnswerReveal, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("display did not receive ceremony_answer_revealed for question %d", questionIndex)
 	}
@@ -1078,8 +1053,8 @@ func (w *World) thenPlayScreenDoesNotReceiveAnswer(teamName string) error {
 	// Observable: play connection for teamName did NOT receive ceremony_answer_revealed.
 	// Wait a short window then assert no such event arrived.
 	time.Sleep(100 * time.Millisecond)
-	key := connectionKey("play", teamName)
-	if w.hasReceivedEvent(key, "ceremony_answer_revealed") {
+	key := connectionKey(rolePlay, teamName)
+	if w.hasReceivedEvent(key, eventCeremonyAnswerReveal) {
 		return fmt.Errorf("play screen for %q incorrectly received ceremony_answer_revealed", teamName)
 	}
 	return nil
@@ -1088,7 +1063,7 @@ func (w *World) thenPlayScreenDoesNotReceiveAnswer(teamName string) error {
 func (w *World) thenFinalLeaderboardVisible() error {
 	// Observable: game_over event received with final_scores payload.
 	// The server broadcasts GameOverPayload{FinalScores map[string]int} as {"final_scores": {...}}.
-	msg, ok := w.waitForEvent("host", "game_over", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("game_over event not received — final leaderboard not visible")
 	}
@@ -1101,7 +1076,7 @@ func (w *World) thenFinalLeaderboardVisible() error {
 func (w *World) thenTeamOnLeaderboard(teamName string) error {
 	// Observable: game_over payload final_scores contains the team by ID.
 	// final_scores is a map from team_id → score. We resolve the team name to ID.
-	msg, ok := w.waitForEvent("host", "game_over", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("game_over event not received")
 	}
@@ -1124,7 +1099,7 @@ func (w *World) thenTeamOnLeaderboard(teamName string) error {
 func (w *World) thenLeaderboardSortedDescending() error {
 	// Observable: game_over payload final_scores are sorted descending by score.
 	// final_scores is a map[string]int, trivially satisfied unless multiple teams exist.
-	msg, ok := w.waitForEvent("host", "game_over", 2*time.Second)
+	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("game_over event not received")
 	}
@@ -1177,7 +1152,7 @@ func (w *World) thenGameControlsAvailable() error {
 	if w.connectionStatus != "connected" {
 		return fmt.Errorf("game controls not available: connection status is %q (expected %q)", w.connectionStatus, "connected")
 	}
-	if w.connections["host"] == nil || !w.connections["host"].Connected {
+	if w.connections[roleHost] == nil || !w.connections[roleHost].Connected {
 		return fmt.Errorf("host not connected — game controls unavailable")
 	}
 	return nil
@@ -1213,7 +1188,7 @@ func (w *World) thenGamePanelVisibleBeneathOverlay() error {
 
 func (w *World) thenRevealAnswerButtonVisible() error {
 	// Observable: ceremony_question_shown received — Reveal Answer button follows.
-	return w.hasReceivedEventErr("host", "ceremony_question_shown")
+	return w.hasReceivedEventErr(roleHost, eventCeremonyQuestionShown)
 }
 
 func (w *World) thenNoCommandSent(commandName string) error {
@@ -1232,7 +1207,7 @@ func (w *World) thenValidationMessageVisible(msg string) error {
 
 func (w *World) thenLoadErrorDisplayed() error {
 	// Observable: error event received on host connection.
-	if w.lastError == "" && !w.hasReceivedEvent("host", "error") {
+	if w.lastError == "" && !w.hasReceivedEvent(roleHost, eventError) {
 		return fmt.Errorf("no error event received — load error message not displayed")
 	}
 	return nil
@@ -1247,14 +1222,14 @@ func (w *World) thenFilePathInputEditable() error {
 }
 
 func (w *World) thenNoRoundControlsVisible() error {
-	if w.hasReceivedEvent("host", "round_started") {
+	if w.hasReceivedEvent(roleHost, eventRoundStarted) {
 		return fmt.Errorf("round was started — round controls would be visible")
 	}
 	return nil
 }
 
 func (w *World) thenServerSentError() error {
-	_, ok := w.waitForEvent("host", "error", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventError, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("error event not received from server")
 	}
@@ -1263,17 +1238,17 @@ func (w *World) thenServerSentError() error {
 
 func (w *World) thenPanelInQuizLoadedState() error {
 	// Observable: quiz_loaded event received, no round_started received.
-	if !w.hasReceivedEvent("host", "quiz_loaded") {
+	if !w.hasReceivedEvent(roleHost, eventQuizLoaded) {
 		return fmt.Errorf("quiz_loaded event not received")
 	}
-	if w.hasReceivedEvent("host", "round_started") {
+	if w.hasReceivedEvent(roleHost, eventRoundStarted) {
 		return fmt.Errorf("round already started — panel is not in quiz-loaded state")
 	}
 	return nil
 }
 
 func (w *World) thenHostReceivedQuizLoaded(rounds, questions int) error {
-	_, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
+	_, ok := w.waitForEvent(roleHost, eventQuizLoaded, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("quiz_loaded event not received")
 	}
@@ -1295,7 +1270,7 @@ func (w *World) thenWebSocketDialRefused() error {
 }
 
 func (w *World) thenNoMessagesReceived() error {
-	key := connectionKey("host", "")
+	key := connectionKey(roleHost, "")
 	msgs := w.messagesFor(key)
 	if len(msgs) > 0 {
 		return fmt.Errorf("expected no messages on refused connection, got %d", len(msgs))

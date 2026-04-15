@@ -186,68 +186,93 @@ func connectionKey(role, name string) string {
 }
 
 // addMessage appends a received message for a connection key (thread-safe).
+// It also extracts observable state from well-known server events.
 func (w *World) addMessage(key string, msg WSMessage) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.receivedMessages[key] = append(w.receivedMessages[key], msg)
-	// Capture team_id from team_registered events.
-	if msg.Event == "team_registered" && msg.Payload != nil {
-		if teamID, ok := msg.Payload["team_id"].(string); ok && teamID != "" {
-			if len(key) > 5 && key[:5] == "play:" {
-				teamName := key[5:]
-				w.teamIDs[teamName] = teamID
-			}
-		}
+	if msg.Payload == nil {
+		return
 	}
-	// Capture round state from round_started events.
-	if msg.Event == "round_started" && msg.Payload != nil {
-		if name, ok := msg.Payload["round_name"].(string); ok {
-			w.currentRoundName = name
+	switch msg.Event {
+	case "team_registered":
+		w.captureTeamID(key, msg.Payload)
+	case eventRoundStarted:
+		w.captureRoundStarted(msg.Payload)
+	case eventQuestionRevealed:
+		if key == roleHost {
+			w.captureQuestionRevealed(msg.Payload)
 		}
-		if qc, ok := msg.Payload["question_count"].(float64); ok {
-			w.totalQuestions = int(qc)
-		}
-		w.revealedCount = 0
-		w.revealedQuestions = []string{}
-	}
-	// Capture question text from question_revealed events on the host connection only.
-	// Payload structure: {"question": {"text": "...", "index": N}, "revealed_count": N, "total_questions": N}
-	if key == "host" && msg.Event == "question_revealed" && msg.Payload != nil {
-		text := ""
-		if q, ok := msg.Payload["question"].(map[string]interface{}); ok {
-			if t, ok := q["text"].(string); ok {
-				text = t
-			}
-		}
-		w.revealedQuestions = append(w.revealedQuestions, text)
-		w.revealedCount++
-	}
-	// Capture quiz metadata from quiz_loaded events.
-	if msg.Event == "quiz_loaded" && msg.Payload != nil {
-		if conf, ok := msg.Payload["confirmation"].(string); ok {
-			w.lastQuizMeta.Confirmation = conf
-		}
-		if title, ok := msg.Payload["title"].(string); ok {
-			w.lastQuizMeta.Title = title
-		}
-		if playerURL, ok := msg.Payload["player_url"].(string); ok {
-			w.lastQuizMeta.PlayerURL = playerURL
-		}
-		if displayURL, ok := msg.Payload["display_url"].(string); ok {
-			w.lastQuizMeta.DisplayURL = displayURL
-		}
-		if rc, ok := msg.Payload["round_count"].(float64); ok {
-			w.lastQuizMeta.RoundCount = int(rc)
-		}
-		if qc, ok := msg.Payload["question_count"].(float64); ok {
-			w.lastQuizMeta.QuestionCount = int(qc)
-		}
-	}
-	// Capture the last error message.
-	if msg.Event == "error" && msg.Payload != nil {
+	case eventQuizLoaded:
+		w.captureQuizLoaded(msg.Payload)
+	case eventError:
 		if errMsg, ok := msg.Payload["message"].(string); ok {
 			w.lastError = errMsg
 		}
+	}
+}
+
+// captureTeamID records the server-assigned team_id for a play connection.
+// Called under w.mu — must not lock.
+func (w *World) captureTeamID(key string, payload map[string]interface{}) {
+	teamID, ok := payload["team_id"].(string)
+	if !ok || teamID == "" {
+		return
+	}
+	const playPrefix = rolePlay + ":"
+	if len(key) > len(playPrefix) && key[:len(playPrefix)] == playPrefix {
+		teamName := key[len(playPrefix):]
+		w.teamIDs[teamName] = teamID
+	}
+}
+
+// captureRoundStarted resets round counters from a round_started payload.
+// Called under w.mu — must not lock.
+func (w *World) captureRoundStarted(payload map[string]interface{}) {
+	if name, ok := payload["round_name"].(string); ok {
+		w.currentRoundName = name
+	}
+	if qc, ok := payload["question_count"].(float64); ok {
+		w.totalQuestions = int(qc)
+	}
+	w.revealedCount = 0
+	w.revealedQuestions = []string{}
+}
+
+// captureQuestionRevealed appends the revealed question text to the host's list.
+// Payload structure: {"question": {"text": "...", "index": N}, "revealed_count": N, "total_questions": N}
+// Called under w.mu — must not lock.
+func (w *World) captureQuestionRevealed(payload map[string]interface{}) {
+	text := ""
+	if q, ok := payload["question"].(map[string]interface{}); ok {
+		if t, ok := q["text"].(string); ok {
+			text = t
+		}
+	}
+	w.revealedQuestions = append(w.revealedQuestions, text)
+	w.revealedCount++
+}
+
+// captureQuizLoaded populates lastQuizMeta from a quiz_loaded payload.
+// Called under w.mu — must not lock.
+func (w *World) captureQuizLoaded(payload map[string]interface{}) {
+	if conf, ok := payload["confirmation"].(string); ok {
+		w.lastQuizMeta.Confirmation = conf
+	}
+	if title, ok := payload["title"].(string); ok {
+		w.lastQuizMeta.Title = title
+	}
+	if playerURL, ok := payload["player_url"].(string); ok {
+		w.lastQuizMeta.PlayerURL = playerURL
+	}
+	if displayURL, ok := payload["display_url"].(string); ok {
+		w.lastQuizMeta.DisplayURL = displayURL
+	}
+	if rc, ok := payload["round_count"].(float64); ok {
+		w.lastQuizMeta.RoundCount = int(rc)
+	}
+	if qc, ok := payload["question_count"].(float64); ok {
+		w.lastQuizMeta.QuestionCount = int(qc)
 	}
 }
 
@@ -269,6 +294,29 @@ func (w *World) messagesFor(key string) []WSMessage {
 	result := make([]WSMessage, len(msgs))
 	copy(result, msgs)
 	return result
+}
+
+// pollUntil repeatedly calls check until it returns (true, nil) or the deadline elapses.
+// Returns the error from check on deadline, or a timeout error if check never returned an error.
+// tick controls the polling interval; deadline controls the maximum wait.
+func pollUntil(deadline time.Duration, tick time.Duration, check func() (done bool, timeoutErr error)) error {
+	timer := time.After(deadline)
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timer:
+			_, err := check()
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("pollUntil: deadline elapsed but check returned no error")
+		case <-ticker.C:
+			if done, _ := check(); done {
+				return nil
+			}
+		}
+	}
 }
 
 // waitForEvent blocks until a message with the given event type is received
@@ -304,7 +352,7 @@ func (w *World) hasReceivedEvent(key, eventType string) bool {
 // hostDriver returns the TriviaDriver for the host connection.
 // Panics if no host connection has been established — precondition violated.
 func (w *World) hostDriver() *HostUIDriver {
-	conn, ok := w.connections["host"]
+	conn, ok := w.connections[roleHost]
 	if !ok || conn.driver == nil {
 		panic("host connection not established — check Given steps")
 	}
