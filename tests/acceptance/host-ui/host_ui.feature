@@ -157,8 +157,8 @@ Feature: Host UI — Quizmaster Panel
   # US-03: Run a Round — Start, Reveal Questions, End
   # ============================================================================
 
-  # @skip @driving_port @real-io @US-03
-  @skip @driving_port @real-io @US-03
+  # @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Starting a round sends the correct command and shows the round panel
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "round-test.yaml" with 1 round of 5 text questions

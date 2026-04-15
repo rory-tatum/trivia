@@ -667,6 +667,10 @@ func (w *World) thenButtonVisible(label string) error {
 		// "Reload" button visible when the reconnect exhaustion overlay is shown.
 		return w.thenReloadButtonVisible()
 
+	case label == "Reveal Next Question":
+		// "Reveal Next Question" visible when round is active and not all questions revealed.
+		return w.thenRevealButtonVisible()
+
 	default:
 		return fmt.Errorf("thenButtonVisible: unrecognised button label %q — add a case for it", label)
 	}
@@ -764,13 +768,30 @@ func (w *World) thenRoundPanelVisible(revealed, total int) error {
 }
 
 func (w *World) thenRoundPanelShowsNameAndCounter(roundName string, revealed, total int) error {
-	return w.thenRoundPanelVisible(revealed, total)
+	if err := w.thenRoundPanelVisible(revealed, total); err != nil {
+		return err
+	}
+	w.mu.Lock()
+	name := w.currentRoundName
+	w.mu.Unlock()
+	if name != roundName {
+		return fmt.Errorf("round panel shows name %q, expected %q", name, roundName)
+	}
+	return nil
 }
 
 func (w *World) thenRevealButtonVisible() error {
-	// Observable: round is active (round_started received) and not all questions revealed.
+	// Observable: round is active (round_started received) and not all questions revealed
+	// (revealedCount < totalQuestions — the Reveal Next Question button is visible only then).
 	if !w.hasReceivedEvent("host", "round_started") {
 		return fmt.Errorf("round has not started — Reveal Next Question button should not be visible")
+	}
+	w.mu.Lock()
+	revealed := w.revealedCount
+	total := w.totalQuestions
+	w.mu.Unlock()
+	if total > 0 && revealed >= total {
+		return fmt.Errorf("all %d questions revealed — Reveal Next Question button should not be visible", total)
 	}
 	return nil
 }

@@ -94,6 +94,17 @@ type World struct {
 	// A value >= 0 indicates a round is in progress; -1 means no round has started.
 	currentRoundIndex int
 
+	// currentRoundName is the name of the active round, set from the round_started event payload.
+	currentRoundName string
+
+	// revealedCount is the number of questions revealed in the current round,
+	// set from the round_started event (reset to 0) and incremented via question_revealed events.
+	revealedCount int
+
+	// totalQuestions is the total number of questions in the current round,
+	// set from the round_started event payload's question_count field.
+	totalQuestions int
+
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -140,6 +151,9 @@ func newWorld() *World {
 		commandSentCount:  make(map[string]int),
 		connectionStatus:  "connecting",
 		currentRoundIndex: -1,
+		currentRoundName:  "",
+		revealedCount:     0,
+		totalQuestions:    0,
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -179,6 +193,16 @@ func (w *World) addMessage(key string, msg WSMessage) {
 				w.teamIDs[teamName] = teamID
 			}
 		}
+	}
+	// Capture round state from round_started events.
+	if msg.Event == "round_started" && msg.Payload != nil {
+		if name, ok := msg.Payload["round_name"].(string); ok {
+			w.currentRoundName = name
+		}
+		if qc, ok := msg.Payload["question_count"].(float64); ok {
+			w.totalQuestions = int(qc)
+		}
+		w.revealedCount = 0
 	}
 	// Capture quiz metadata from quiz_loaded events.
 	if msg.Event == "quiz_loaded" && msg.Payload != nil {
