@@ -9,10 +9,15 @@ package steps
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
 )
+
+// defaultQuestionCount is the number of questions used in focused test fixtures
+// that do not specify an explicit question count (e.g. givenScoringOpen, givenAllAnswersMarked).
+const defaultQuestionCount = 2
 
 // =============================================================================
 // Given implementations — arrange preconditions
@@ -174,8 +179,7 @@ func (w *World) givenScoringOpen(roundIndex int) error {
 	}
 	driver := w.hostDriver()
 	// Reveal all questions then end round to open scoring.
-	// Question count derived from loaded fixtures (default 2 for focused tests).
-	for i := 0; i < 2; i++ {
+	for i := 0; i < defaultQuestionCount; i++ {
 		if err := driver.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
 			return err
 		}
@@ -186,12 +190,7 @@ func (w *World) givenScoringOpen(roundIndex int) error {
 	if err := driver.HostBeginScoring(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	// Wait for scoring_data to arrive (IC-4).
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
-	if !ok {
-		return fmt.Errorf("timed out waiting for scoring_data event")
-	}
-	return nil
+	return w.waitForScoringData()
 }
 
 func (w *World) givenTeamSubmittedAnswer(teamName string, questionIndex int, answer string) error {
@@ -203,8 +202,7 @@ func (w *World) givenAllAnswersMarked(roundIndex int) error {
 	driver := w.hostDriver()
 	// Mark all teams' answers for the round (best effort with known team IDs).
 	for teamName, teamID := range w.teamIDs {
-		// 2 questions per round in default test fixtures.
-		for qi := 0; qi < 2; qi++ {
+		for qi := 0; qi < defaultQuestionCount; qi++ {
 			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
 				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
 			}
@@ -227,9 +225,8 @@ func (w *World) givenRoundFullyComplete(roundIndex int) error {
 	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
-	if !ok {
-		return fmt.Errorf("timed out waiting for scoring_data after begin_scoring")
+	if err := w.waitForScoringData(); err != nil {
+		return err
 	}
 	if err := w.givenAllAnswersMarked(roundIndex); err != nil {
 		return err
@@ -256,9 +253,8 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 	if err := w.hostDriver().HostBeginScoring(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
-	if !ok {
-		return fmt.Errorf("timed out waiting for scoring_data")
+	if err := w.waitForScoringData(); err != nil {
+		return err
 	}
 	// Mark one answer correct per team (equal scores).
 	for _, teamID := range w.teamIDs {
@@ -291,6 +287,16 @@ func (w *World) givenCeremonyComplete(roundIndex, questionCount int) error {
 		if err := w.hostDriver().HostCeremonyRevealAnswer(w.ctx, i); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// waitForScoringData blocks until the scoring_data event arrives on the host connection.
+// Used by Given steps that drive the server into the scoring phase.
+func (w *World) waitForScoringData() error {
+	_, ok := w.waitForEvent("host", "scoring_data", 2*time.Second)
+	if !ok {
+		return fmt.Errorf("timed out waiting for scoring_data event")
 	}
 	return nil
 }
@@ -387,13 +393,12 @@ func (w *World) whenMarcusConnectsWithToken(token string) error {
 	driver := NewHostUIDriver(w.server, token, w)
 	w.connections["host"] = &WSConnection{Role: "host", Connected: false, driver: driver}
 	err := driver.ConnectHostWithToken(w.ctx, token)
-	// Wrong token — error is expected; record it and set auth failure state.
 	if err != nil {
+		// Auth failure is permanent — WsClient does not retry on 403.
 		w.lastConnectError = err
 		w.authFailed = true
 		w.authErrorMessage = "Connection refused — invalid token. Check HOST_TOKEN and reload."
 		w.lastError = fmt.Sprintf("connection refused: %v", err)
-		// No reconnect attempts are made after auth failure (AUTH_FAILED is permanent).
 		w.reconnectAttemptCount = 0
 	}
 	return nil
@@ -523,26 +528,14 @@ func (w *World) thenHostPanelShowsConnected() error {
 }
 
 func (w *World) thenConnectionStatusConnecting() error {
-	// Observable: the connection was initiated (Connected=true) and no application-level
-	// messages have been received yet — this is the "Connecting..." timeline in the
-	// WsClient lifecycle: dial initiated → handshake → onOpen fires → CONNECTED.
-	// In this GoDoc test the sequence is verified: after ConnectHost returns, the
-	// connection is established but zero server messages have arrived yet (pre-first-message
-	// state corresponds to the connecting→connected transition).
+	// Observable: the dial was initiated. The "Connecting..." phase precedes the
+	// first server message — verified by confirming the connection exists.
 	conn, ok := w.connections["host"]
 	if !ok || conn == nil {
 		return fmt.Errorf("connection status: no WebSocket connection initiated")
 	}
 	if !conn.Connected {
 		return fmt.Errorf("connection status: connection was not established (expected connecting→connected sequence)")
-	}
-	// The "Connecting" phase is verified by the absence of server-pushed events:
-	// a fresh connection has the connection open but no quiz_loaded or other events yet.
-	msgs := w.messagesFor("host")
-	if len(msgs) > 0 {
-		// Messages already arrived — still valid: "Connecting" preceded "Connected".
-		// The sequence invariant holds: dial was initiated before messages arrived.
-		return nil
 	}
 	return nil
 }
@@ -625,7 +618,7 @@ func (w *World) thenButtonVisible(label string) error {
 	//   "End Round"      → round active and all questions revealed (revealed_count == total_questions)
 	//   "End Game"       → round_scores_published received (last round scored, game can end)
 	switch {
-	case len(label) >= 11 && label[:11] == "Start Round":
+	case strings.HasPrefix(label, "Start Round"):
 		// "Start Round 1" (or "Start Round N: ...") visible after quiz_loaded, before round_started.
 		_, ok := w.waitForEvent("host", "quiz_loaded", 2*time.Second)
 		if !ok {

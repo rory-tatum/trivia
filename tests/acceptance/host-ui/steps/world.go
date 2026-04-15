@@ -63,6 +63,8 @@ type World struct {
 	// commandSentCount tracks how many commands of each event type were sent.
 	commandSentCount map[string]int
 
+	// -- Auth failure state (set when the host token is rejected with HTTP 403) --
+
 	// lastConnectError holds the error returned by a failed ConnectHostWithToken call.
 	lastConnectError error
 
@@ -75,15 +77,17 @@ type World struct {
 	// reconnectAttemptCount tracks how many reconnect attempts were made after auth failure.
 	reconnectAttemptCount int
 
+	// -- Connection lifecycle state (set by When steps driving the connection FSM) --
+
 	// connectionStatus tracks the observable protocol state: "connecting", "connected",
-	// "reconnecting", or "disconnected". Set by When steps that drive connection lifecycle.
+	// "reconnecting", or "disconnected".
 	connectionStatus string
 
 	// connectionDropped is true when the host connection was force-closed by the driver.
 	connectionDropped bool
 
-	// reconnectExhausted is true when the WsClient RECONNECT_FAILED event is modelled:
-	// 10 consecutive close events without a successful handshake have been simulated.
+	// reconnectExhausted is true when all reconnect attempts have been exhausted
+	// (models the WsClient RECONNECT_FAILED event after 10 consecutive close events).
 	reconnectExhausted bool
 
 	// reconnectFailureCount tracks the number of consecutive reconnect failures simulated.
@@ -132,24 +136,23 @@ func newWorld() *World {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	return &World{
 		hostToken:         "test-secret-token",
-		quizFixtures:     make(map[string]string),
-		connections:      make(map[string]*WSConnection),
-		receivedMessages: make(map[string][]WSMessage),
-		teamIDs:          make(map[string]string),
-		commandSentCount: make(map[string]int),
-		connectionStatus: "connecting",
+		quizFixtures:      make(map[string]string),
+		connections:       make(map[string]*WSConnection),
+		receivedMessages:  make(map[string][]WSMessage),
+		teamIDs:           make(map[string]string),
+		commandSentCount:  make(map[string]int),
+		connectionStatus:  "connecting",
 		currentRoundIndex: -1,
-		ctx:              ctx,
-		cancel:           cancel,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 }
 
 // teardown shuts down the test server and closes all connections.
 func (w *World) teardown() {
 	w.cancel()
-	for role, conn := range w.connections {
+	for _, conn := range w.connections {
 		if conn.Connected && conn.driver != nil {
-			_ = role
 			conn.driver.CloseConnection(conn.Role, conn.Name)
 		}
 	}

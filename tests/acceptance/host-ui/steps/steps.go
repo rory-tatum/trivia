@@ -48,11 +48,6 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.givenQuizFileExistsMultiRound(filename, rounds, questions)
 		})
 
-	sc.Step(`^a quiz file "([^"]*)" with (\d+) rounds of (\d+) text questions each$`,
-		func(filename string, rounds, questions int) error {
-			return w.givenQuizFileExistsMultiRound(filename, rounds, questions)
-		})
-
 	sc.Step(`^Marcus opens the quizmaster panel with a valid host token$`,
 		func() error {
 			return w.givenMarcusConnectsToHostPanel()
@@ -71,11 +66,6 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^Marcus has opened the quizmaster panel with a valid token$`,
 		func() error {
 			return w.givenMarcusConnectsToHostPanel()
-		})
-
-	sc.Step(`^"([^"]*)" is connected in the lobby$`,
-		func(teamName string) error {
-			return w.givenTeamConnected(teamName)
 		})
 
 	sc.Step(`^"([^"]*)" is connected in the lobby$`,

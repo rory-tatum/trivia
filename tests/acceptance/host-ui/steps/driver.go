@@ -58,12 +58,12 @@ func (d *HostUIDriver) ConnectHost(ctx context.Context) error {
 }
 
 // ConnectHostWithToken opens a WebSocket connection using an explicit token.
-// Used for negative tests (wrong token scenarios).
+// For wrong-token scenarios the server returns a non-101 response and Dial fails;
+// the caller is expected to handle the error as an auth rejection.
 func (d *HostUIDriver) ConnectHostWithToken(ctx context.Context, token string) error {
 	url := d.wsURL(fmt.Sprintf("/ws?token=%s", token))
 	conn, _, err := websocket.Dial(ctx, url, nil)
 	if err != nil {
-		// For wrong-token scenarios, Dial itself will fail (server returns non-101).
 		return fmt.Errorf("host ws connect with token %q: %w", token, err)
 	}
 	key := connectionKey("host", "")
