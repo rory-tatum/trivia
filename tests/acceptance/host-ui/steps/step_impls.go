@@ -736,7 +736,8 @@ func (w *World) thenButtonNotVisible(label string) error {
 }
 
 func (w *World) thenRoundPanelVisible(revealed, total int) error {
-	// Observable: question_revealed events received matching the expected revealed count.
+	// Observable: w.revealedCount == revealed and w.totalQuestions == total,
+	// populated from round_started and question_revealed events.
 	// Uses polling to tolerate WebSocket message propagation latency.
 	deadline := time.After(2 * time.Second)
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -744,23 +745,17 @@ func (w *World) thenRoundPanelVisible(revealed, total int) error {
 	for {
 		select {
 		case <-deadline:
-			msgs := w.messagesFor("host")
-			questionCount := 0
-			for _, msg := range msgs {
-				if msg.Event == "question_revealed" {
-					questionCount++
-				}
-			}
-			return fmt.Errorf("expected %d questions revealed, got %d (timed out)", revealed, questionCount)
+			w.mu.Lock()
+			gotRevealed := w.revealedCount
+			gotTotal := w.totalQuestions
+			w.mu.Unlock()
+			return fmt.Errorf("expected %d of %d revealed, got %d of %d (timed out)", revealed, total, gotRevealed, gotTotal)
 		case <-ticker.C:
-			msgs := w.messagesFor("host")
-			questionCount := 0
-			for _, msg := range msgs {
-				if msg.Event == "question_revealed" {
-					questionCount++
-				}
-			}
-			if questionCount == revealed {
+			w.mu.Lock()
+			gotRevealed := w.revealedCount
+			gotTotal := w.totalQuestions
+			w.mu.Unlock()
+			if gotRevealed == revealed && gotTotal == total {
 				return nil
 			}
 		}
@@ -801,16 +796,37 @@ func (w *World) thenRevealButtonNotVisible() error {
 }
 
 func (w *World) thenFirstQuestionInList() error {
-	// Observable: question_revealed event received with question_index 0.
-	msgs := w.messagesFor("host")
-	for _, msg := range msgs {
-		if msg.Event == "question_revealed" {
-			if idx, ok := msg.Payload["question_index"].(float64); ok && int(idx) == 0 {
+	// Observable: at least one question_revealed event received and its question_text is non-empty.
+	// Poll to tolerate WebSocket message propagation latency.
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			w.mu.Lock()
+			count := len(w.revealedQuestions)
+			w.mu.Unlock()
+			if count == 0 {
+				return fmt.Errorf("no question_revealed events received: revealedQuestions is empty")
+			}
+			w.mu.Lock()
+			first := w.revealedQuestions[0]
+			w.mu.Unlock()
+			return fmt.Errorf("first revealed question text is empty (got %q)", first)
+		case <-ticker.C:
+			w.mu.Lock()
+			count := len(w.revealedQuestions)
+			first := ""
+			if count > 0 {
+				first = w.revealedQuestions[0]
+			}
+			w.mu.Unlock()
+			if count >= 1 && first != "" {
 				return nil
 			}
 		}
 	}
-	return fmt.Errorf("question_revealed event with question_index 0 not received")
 }
 
 func (w *World) thenRevealedQuestionsCount(count int) error {

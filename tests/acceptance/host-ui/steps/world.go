@@ -105,6 +105,10 @@ type World struct {
 	// set from the round_started event payload's question_count field.
 	totalQuestions int
 
+	// revealedQuestions holds the question_text of each revealed question,
+	// appended in order from question_revealed events.
+	revealedQuestions []string
+
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -154,6 +158,7 @@ func newWorld() *World {
 		currentRoundName:  "",
 		revealedCount:     0,
 		totalQuestions:    0,
+		revealedQuestions: []string{},
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -203,6 +208,19 @@ func (w *World) addMessage(key string, msg WSMessage) {
 			w.totalQuestions = int(qc)
 		}
 		w.revealedCount = 0
+		w.revealedQuestions = []string{}
+	}
+	// Capture question text from question_revealed events on the host connection only.
+	// Payload structure: {"question": {"text": "...", "index": N}, "revealed_count": N, "total_questions": N}
+	if key == "host" && msg.Event == "question_revealed" && msg.Payload != nil {
+		text := ""
+		if q, ok := msg.Payload["question"].(map[string]interface{}); ok {
+			if t, ok := q["text"].(string); ok {
+				text = t
+			}
+		}
+		w.revealedQuestions = append(w.revealedQuestions, text)
+		w.revealedCount++
 	}
 	// Capture quiz metadata from quiz_loaded events.
 	if msg.Event == "quiz_loaded" && msg.Payload != nil {
