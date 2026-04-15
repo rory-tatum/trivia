@@ -134,8 +134,8 @@ Feature: Host UI — Quizmaster Panel
     And the display URL is displayed
     And the "Start Round 1: Round 1" button is visible
 
-  # @skip @driving_port @real-io @US-02
-  @skip @driving_port @real-io @US-02
+  # @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Quiz load with a file that does not exist shows an inline error
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid host token
