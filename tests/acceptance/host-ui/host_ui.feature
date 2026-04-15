@@ -76,8 +76,8 @@ Feature: Host UI — Quizmaster Panel
     Then the connection status shows "Connected"
     And the load quiz form is visible
 
-  # @skip @driving_port @real-io @US-01
-  @skip @driving_port @real-io @US-01
+  # @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Wrong token shows a permanent auth error and stops retrying
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When Marcus opens the quizmaster panel with token "wrong-token"

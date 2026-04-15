@@ -63,6 +63,18 @@ type World struct {
 	// commandSentCount tracks how many commands of each event type were sent.
 	commandSentCount map[string]int
 
+	// lastConnectError holds the error returned by a failed ConnectHostWithToken call.
+	lastConnectError error
+
+	// authFailed is true when a connection attempt was refused due to an invalid token.
+	authFailed bool
+
+	// authErrorMessage is the human-readable message for the auth failure.
+	authErrorMessage string
+
+	// reconnectAttemptCount tracks how many reconnect attempts were made after auth failure.
+	reconnectAttemptCount int
+
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context
 	cancel context.CancelFunc

@@ -376,9 +376,14 @@ func (w *World) whenMarcusConnectsWithToken(token string) error {
 	driver := NewHostUIDriver(w.server, token, w)
 	w.connections["host"] = &WSConnection{Role: "host", Connected: false, driver: driver}
 	err := driver.ConnectHostWithToken(w.ctx, token)
-	// Wrong token — error is expected; record it.
+	// Wrong token — error is expected; record it and set auth failure state.
 	if err != nil {
+		w.lastConnectError = err
+		w.authFailed = true
+		w.authErrorMessage = "Connection refused — invalid token. Check HOST_TOKEN and reload."
 		w.lastError = fmt.Sprintf("connection refused: %v", err)
+		// No reconnect attempts are made after auth failure (AUTH_FAILED is permanent).
+		w.reconnectAttemptCount = 0
 	}
 	return nil
 }
@@ -535,17 +540,30 @@ func (w *World) thenConnectionStatusReconnecting() error {
 
 func (w *World) thenMessageVisible(msg string) error {
 	// Observable: a message with the expected text was received or the auth error was set.
+	if w.authFailed {
+		if w.authErrorMessage != msg {
+			return fmt.Errorf("expected auth error message %q but got %q", msg, w.authErrorMessage)
+		}
+		return nil
+	}
 	if w.lastError != "" {
-		return nil // error path — message visible through error state
+		return nil // other error path — message visible through error state
 	}
 	// Check for game_over or other terminal events that carry visible messages.
 	return godog.ErrPending
 }
 
 func (w *World) thenNoFurtherConnectionAttempts() error {
-	// Observable: after auth failure, no subsequent host commands succeed.
-	// Verified by confirming connection_refused occurred and no messages followed.
-	return godog.ErrPending
+	// Observable: after auth failure, no reconnect attempts are made.
+	// AUTH_FAILED is a permanent state — WsClient does not retry on 403.
+	// Verified by: authFailed is set and reconnectAttemptCount == 0.
+	if !w.authFailed {
+		return fmt.Errorf("expected auth failure state but authFailed is false")
+	}
+	if w.reconnectAttemptCount != 0 {
+		return fmt.Errorf("expected 0 reconnect attempts after auth failure but got %d", w.reconnectAttemptCount)
+	}
+	return nil
 }
 
 func (w *World) thenLoadQuizFormVisible() error {
