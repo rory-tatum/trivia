@@ -732,7 +732,12 @@ func (w *World) thenDisplayURLDisplayed() error {
 }
 
 func (w *World) thenButtonNotVisible(label string) error {
-	return godog.ErrPending
+	switch label {
+	case "Reveal Next Question":
+		return w.thenRevealButtonNotVisible()
+	default:
+		return fmt.Errorf("thenButtonNotVisible: unrecognised button label %q — add a case for it", label)
+	}
 }
 
 func (w *World) thenRoundPanelVisible(revealed, total int) error {
@@ -792,7 +797,19 @@ func (w *World) thenRevealButtonVisible() error {
 }
 
 func (w *World) thenRevealButtonNotVisible() error {
-	return godog.ErrPending
+	// Observable: all questions have been revealed — the Reveal Next Question button
+	// is no longer visible when revealedCount >= totalQuestions.
+	w.mu.Lock()
+	revealed := w.revealedCount
+	total := w.totalQuestions
+	w.mu.Unlock()
+	if total == 0 {
+		return fmt.Errorf("no round started — cannot determine Reveal Next Question button visibility")
+	}
+	if revealed < total {
+		return fmt.Errorf("only %d of %d questions revealed — Reveal Next Question button is still visible", revealed, total)
+	}
+	return nil
 }
 
 func (w *World) thenFirstQuestionInList() error {

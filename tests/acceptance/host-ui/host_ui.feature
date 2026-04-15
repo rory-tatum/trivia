@@ -190,8 +190,8 @@ Feature: Host UI — Quizmaster Panel
     Then the revealed question list shows 3 questions in order
     And the round panel shows "3 of 3 revealed"
 
-  # @skip @driving_port @real-io @US-03
-  @skip @driving_port @real-io @US-03
+  # @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Revealing the last question replaces "Reveal Next Question" with "End Round"
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "round-test.yaml" with 1 round of 5 text questions
