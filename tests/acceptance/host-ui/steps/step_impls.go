@@ -799,17 +799,28 @@ func (w *World) thenRevealButtonVisible() error {
 func (w *World) thenRevealButtonNotVisible() error {
 	// Observable: all questions have been revealed — the Reveal Next Question button
 	// is no longer visible when revealedCount >= totalQuestions.
-	w.mu.Lock()
-	revealed := w.revealedCount
-	total := w.totalQuestions
-	w.mu.Unlock()
-	if total == 0 {
-		return fmt.Errorf("no round started — cannot determine Reveal Next Question button visibility")
+	// Poll to tolerate WebSocket message propagation latency from the final reveal.
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			w.mu.Lock()
+			revealed := w.revealedCount
+			total := w.totalQuestions
+			w.mu.Unlock()
+			return fmt.Errorf("only %d of %d questions revealed — Reveal Next Question button is still visible", revealed, total)
+		case <-ticker.C:
+			w.mu.Lock()
+			revealed := w.revealedCount
+			total := w.totalQuestions
+			w.mu.Unlock()
+			if total > 0 && revealed >= total {
+				return nil
+			}
+		}
 	}
-	if revealed < total {
-		return fmt.Errorf("only %d of %d questions revealed — Reveal Next Question button is still visible", revealed, total)
-	}
-	return nil
 }
 
 func (w *World) thenFirstQuestionInList() error {
