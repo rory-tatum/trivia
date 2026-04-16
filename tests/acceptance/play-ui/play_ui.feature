@@ -59,7 +59,7 @@ Feature: Play UI — Player Interface
   # US-01: Team Registration
   # ============================================================================
 
-  @skip @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Player registers a unique team name and receives their team identity
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When "Team Awesome" connects to the play room
@@ -67,14 +67,14 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives their team identity
     And the team identity includes a team identifier and a device token
 
-  @skip @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Player receives a duplicate name rejection when their team name is already taken
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And "The Brainiacs" is already registered in the game
     When "The Brainiacs" attempts to register from a second device
     Then the second device receives a name-already-taken error
 
-  @skip @driving_port @real-io @US-01
+  @driving_port @real-io @US-01
   Scenario: Player connects to the play room and receives an initial game state snapshot
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When "Team Awesome" connects to the play room
@@ -427,7 +427,7 @@ Feature: Play UI — Player Interface
   # (Behaviour at invalid state or protocol boundary)
   # ============================================================================
 
-  @skip @infrastructure-failure @in-memory @US-01
+  @infrastructure-failure @in-memory @US-01
   Scenario: Team registration rejected when the team name is empty
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When a player attempts to register with an empty team name

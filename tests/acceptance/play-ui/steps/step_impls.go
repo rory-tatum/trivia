@@ -9,10 +9,14 @@
 package steps
 
 import (
+	"context"
 	"fmt"
+	"net/http/httptest"
+	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
+	"nhooyr.io/websocket"
 )
 
 // Event type names sent by the server over WebSocket.
@@ -40,6 +44,17 @@ const negativeEventWindow = 150 * time.Millisecond
 // defaultQuestionCount is the number of questions used in focused test fixtures
 // that do not specify an explicit question count.
 const defaultQuestionCount = 2
+
+// =============================================================================
+// Internal helpers
+// =============================================================================
+
+// dialPlay opens a raw WebSocket connection to the play room without registering it in the world.
+func dialPlay(ctx context.Context, server *httptest.Server) (*websocket.Conn, error) {
+	url := strings.Replace(server.URL, "http://", "ws://", 1) + "/ws?room=play"
+	conn, _, err := websocket.Dial(ctx, url, nil)
+	return conn, err
+}
 
 // =============================================================================
 // Given implementations — arrange preconditions
@@ -140,7 +155,24 @@ func (w *World) givenAllQuestionsRevealed(count int) error {
 }
 
 func (w *World) givenTeamAlreadyRegistered(teamName string) error {
-	return godog.ErrPending
+	// Precondition: connect and register the team so the name is taken.
+	if w.server == nil {
+		return fmt.Errorf("server not started")
+	}
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return err
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return err
+	}
+	// Wait for team_registered to confirm the name is now taken.
+	key := connectionKey(rolePlay, teamName)
+	_, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("team %q did not register successfully in givenTeamAlreadyRegistered", teamName)
+	}
+	return nil
 }
 
 func (w *World) givenTeamRegistered(teamName string) error {
@@ -225,11 +257,59 @@ func (w *World) whenTeamConnectsAndRegisters(teamName string) error {
 }
 
 func (w *World) whenTeamAttemptsRegistrationFromSecondDevice(teamName string) error {
-	return godog.ErrPending
+	// Simulate a second physical device: open a fresh play connection under a distinct key.
+	const secondDeviceSuffix = ":device2"
+	secondKey := connectionKey(rolePlay, teamName) + secondDeviceSuffix
+	d2 := NewPlayUIDriver(w.server, w.hostToken, w)
+	w.connections[secondKey] = &WSConnection{
+		Role:      rolePlay,
+		Name:      teamName + secondDeviceSuffix,
+		Connected: false,
+		driver:    d2,
+	}
+	// Connect using the play endpoint.
+	conn, err := dialPlay(w.ctx, w.server)
+	if err != nil {
+		return fmt.Errorf("second device connect: %w", err)
+	}
+	d2.wsConns[secondKey] = conn
+	go d2.readLoop(w.ctx, secondKey, conn)
+	w.connections[secondKey].Connected = true
+	// Attempt to register with the already-taken name.
+	return d2.sendMessage(w.ctx, secondKey, map[string]interface{}{
+		"event": "team_register",
+		"payload": map[string]interface{}{
+			"team_name": teamName,
+		},
+	})
 }
 
 func (w *World) whenPlayerAttemptsEmptyRegistration() error {
-	return godog.ErrPending
+	// An anonymous player connects and sends team_register with an empty team_name.
+	if w.server == nil {
+		return fmt.Errorf("server not started")
+	}
+	const anonKey = "play:anonymous"
+	conn, err := dialPlay(w.ctx, w.server)
+	if err != nil {
+		return fmt.Errorf("anonymous player connect: %w", err)
+	}
+	anonDriver := NewPlayUIDriver(w.server, w.hostToken, w)
+	anonDriver.wsConns[anonKey] = conn
+	go anonDriver.readLoop(w.ctx, anonKey, conn)
+	w.connections[anonKey] = &WSConnection{
+		Role:      rolePlay,
+		Name:      "anonymous",
+		Connected: true,
+		driver:    anonDriver,
+	}
+	// Send team_register with an empty team_name.
+	return anonDriver.sendMessage(w.ctx, anonKey, map[string]interface{}{
+		"event": "team_register",
+		"payload": map[string]interface{}{
+			"team_name": "",
+		},
+	})
 }
 
 func (w *World) whenTeamReconnectsWithStoredToken(teamName string) error {
@@ -370,7 +450,18 @@ func (w *World) thenTeamReceivesIdentity(teamName string) error {
 }
 
 func (w *World) thenTeamIdentityHasBothTokens() error {
-	return godog.ErrPending
+	// Observable: the most recently registered team has both team_id and device_token
+	// already captured by captureTeamRegistered when the team_registered event arrived.
+	// We check all known teams — at least one must have both fields set.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for teamName, id := range w.teamIDs {
+		token := w.deviceTokens[teamName]
+		if id != "" && token != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("no registered team has both team_id and device_token set")
 }
 
 func (w *World) thenTeamInLobby(teamName string) error {
@@ -621,11 +712,32 @@ func (w *World) thenFinalScoresHaveTeamNames() error {
 }
 
 func (w *World) thenTeamReceivesGameState(teamName string) error {
-	return godog.ErrPending
+	// Observable: play connection received a state_snapshot event after connecting.
+	key := connectionKey(rolePlay, teamName)
+	_, ok := w.waitForEvent(key, eventStateSnapshot, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("team %q did not receive state_snapshot", teamName)
+	}
+	return nil
 }
 
 func (w *World) thenGameStateIsLobby() error {
-	return godog.ErrPending
+	// Observable: the most recently received state_snapshot for any play connection has state == "LOBBY".
+	for key, msgs := range w.receivedMessages {
+		if !strings.HasPrefix(key, rolePlay+":") && key != rolePlay {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.Event == eventStateSnapshot {
+				state, _ := msg.Payload["state"].(string)
+				if state == "LOBBY" {
+					return nil
+				}
+				return fmt.Errorf("state_snapshot state expected %q, got %q", "LOBBY", state)
+			}
+		}
+	}
+	return fmt.Errorf("no state_snapshot received on any play connection")
 }
 
 func (w *World) thenTeamReceivesStateSnapshot(teamName string) error {
@@ -665,7 +777,45 @@ func (w *World) thenSnapshotHasNoDraftAnswers(teamName string) error {
 }
 
 func (w *World) thenSecondDeviceReceivesDuplicateError() error {
-	return godog.ErrPending
+	// Observable: the second device connection received an error event with code team_name_taken.
+	// Look through all connection keys for the second device suffix.
+	const secondDeviceSuffix = ":device2"
+	timeout := time.After(eventWaitTimeout)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			// Report what we found for diagnostics.
+			for key, msgs := range w.receivedMessages {
+				if strings.HasSuffix(key, secondDeviceSuffix) {
+					for _, msg := range msgs {
+						if msg.Event == eventError {
+							code, _ := msg.Payload["code"].(string)
+							if code == "team_name_taken" {
+								return nil
+							}
+						}
+					}
+					return fmt.Errorf("second device received no team_name_taken error; messages: %v", msgs)
+				}
+			}
+			return fmt.Errorf("second device connection not found in received messages")
+		case <-ticker.C:
+			for key, msgs := range w.receivedMessages {
+				if strings.HasSuffix(key, secondDeviceSuffix) {
+					for _, msg := range msgs {
+						if msg.Event == eventError {
+							code, _ := msg.Payload["code"].(string)
+							if code == "team_name_taken" {
+								return nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func (w *World) thenReceivesTeamNotFoundError() error {
@@ -685,11 +835,25 @@ func (w *World) thenTeamReceivesErrorResponse(teamName string) error {
 }
 
 func (w *World) thenAnonymousPlayerReceivesError() error {
-	return godog.ErrPending
+	// Observable: the anonymous player connection received an error event.
+	const anonKey = "play:anonymous"
+	_, ok := w.waitForEvent(anonKey, eventError, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("anonymous player did not receive an error event")
+	}
+	return nil
 }
 
 func (w *World) thenNoTeamIdentityIssued() error {
-	return godog.ErrPending
+	// Observable: no team_registered event was received on the anonymous connection.
+	const anonKey = "play:anonymous"
+	time.Sleep(negativeEventWindow)
+	for _, msg := range w.messagesFor(anonKey) {
+		if msg.Event == eventTeamRegistered {
+			return fmt.Errorf("unexpected team_registered event received by anonymous player")
+		}
+	}
+	return nil
 }
 
 func (w *World) thenNoErrorReturnedToTeam(teamName string) error {
