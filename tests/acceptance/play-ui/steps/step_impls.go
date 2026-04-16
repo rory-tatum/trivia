@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cucumber/godog"
 	"nhooyr.io/websocket"
 )
 
@@ -2083,10 +2082,6 @@ func (w *World) thenRoundScoresPayloadHasStructuredList(teamName string) error {
 
 func (w *World) thenEachScoreEntryHasTeamName() error {
 	return w.thenScoresListHasTeamNames()
-}
-
-func (w *World) thenCeremonyAnswerPayloadHasVerdicts(teamName string) error {
-	return godog.ErrPending
 }
 
 func (w *World) thenVerdictsListPresent() error {
