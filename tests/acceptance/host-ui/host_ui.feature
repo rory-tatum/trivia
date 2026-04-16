@@ -312,7 +312,7 @@ Feature: Host UI — Quizmaster Panel
 
   # @driving_port @real-io @US-05
   @driving_port @real-io @US-05
-  Scenario: Revealing the answer sends it to display only — play room does not receive it
+  Scenario: Revealing the answer sends it to both display and play rooms
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "ceremony-test.yaml" with 1 round of 2 text questions
     And "The Brainiacs" is connected in the lobby
@@ -320,7 +320,7 @@ Feature: Host UI — Quizmaster Panel
     And Marcus is showing question 1 on the ceremony panel
     When Marcus clicks "Reveal Answer" for question 1
     Then the display screen receives the answer for question 1
-    And the play screen for "The Brainiacs" does not receive the answer
+    And the play screen for "The Brainiacs" receives the ceremony answer reveal
 
   # @driving_port @real-io @US-05
   @driving_port @real-io @US-05

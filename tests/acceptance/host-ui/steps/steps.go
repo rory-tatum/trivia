@@ -537,6 +537,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.thenPlayScreenDoesNotReceiveAnswer(teamName)
 		})
 
+	sc.Step(`^the play screen for "([^"]*)" receives the ceremony answer reveal$`,
+		func(teamName string) error {
+			return w.thenPlayScreenReceivesCeremonyAnswerReveal(teamName)
+		})
+
 	sc.Step(`^the final leaderboard is displayed$`,
 		func() error {
 			return w.thenFinalLeaderboardVisible()

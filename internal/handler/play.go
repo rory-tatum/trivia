@@ -223,7 +223,9 @@ func (ph *PlayHandler) handleSubmitAnswers(_ context.Context, conn *websocket.Co
 		log.Printf("play: send submission_ack: %v", err)
 	}
 
-	// Notify host of received submission.
+	// Notify host and play room of received submission.
 	teamName := ph.teamNameByID(payload.TeamID)
-	_ = ph.h.Broadcast(hub.RoomHost, hub.NewSubmissionReceivedEvent(payload.TeamID, teamName, payload.RoundIndex))
+	submissionEvt := hub.NewSubmissionReceivedEvent(payload.TeamID, teamName, payload.RoundIndex)
+	_ = ph.h.Broadcast(hub.RoomHost, submissionEvt)
+	_ = ph.h.Broadcast(hub.RoomPlay, submissionEvt)
 }

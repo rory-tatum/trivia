@@ -1301,18 +1301,35 @@ func (w *World) thenPlayScreenDoesNotReceiveAnswer(teamName string) error {
 	return nil
 }
 
-// waitForGameOverScores waits for the game_over event and returns its final_scores map.
+func (w *World) thenPlayScreenReceivesCeremonyAnswerReveal(teamName string) error {
+	// Observable: play connection for teamName received ceremony_answer_revealed (DEP-02).
+	key := connectionKey(rolePlay, teamName)
+	_, ok := w.waitForEvent(key, eventCeremonyAnswerReveal, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("play screen for %q did not receive ceremony_answer_revealed", teamName)
+	}
+	return nil
+}
+
+// waitForGameOverScores waits for the game_over event and returns its final_scores list.
 // Returns an error if the event is not received or if final_scores is missing or malformed.
-func (w *World) waitForGameOverScores() (map[string]interface{}, error) {
+// final_scores is now a []FinalScoreEntry (array with team_id, team_name, total fields).
+func (w *World) waitForGameOverScores() ([]map[string]interface{}, error) {
 	msg, ok := w.waitForEvent(roleHost, eventGameOver, eventWaitTimeout)
 	if !ok {
 		return nil, fmt.Errorf("game_over event not received — final leaderboard not visible")
 	}
-	finalScores, ok := msg.Payload["final_scores"].(map[string]interface{})
+	rawList, ok := msg.Payload["final_scores"].([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("game_over payload missing or malformed final_scores (got %T: %v)", msg.Payload["final_scores"], msg.Payload["final_scores"])
 	}
-	return finalScores, nil
+	entries := make([]map[string]interface{}, 0, len(rawList))
+	for _, item := range rawList {
+		if entry, ok := item.(map[string]interface{}); ok {
+			entries = append(entries, entry)
+		}
+	}
+	return entries, nil
 }
 
 func (w *World) thenFinalLeaderboardVisible() error {
@@ -1322,27 +1339,22 @@ func (w *World) thenFinalLeaderboardVisible() error {
 }
 
 func (w *World) thenTeamOnLeaderboard(teamName string) error {
-	// Observable: game_over payload final_scores contains the team by ID.
-	// final_scores is a map from team_id → score. We resolve the team name to ID.
+	// Observable: game_over payload final_scores contains an entry for the team by name or ID.
 	finalScores, err := w.waitForGameOverScores()
 	if err != nil {
 		return err
 	}
-	// Look for the team by its server-assigned ID.
 	teamID := w.teamID(teamName)
-	if _, found := finalScores[teamID]; found {
-		return nil
-	}
-	// Fallback: team name used as key (in case server changed behaviour).
-	if _, found := finalScores[teamName]; found {
-		return nil
+	for _, entry := range finalScores {
+		if entry["team_name"] == teamName || entry["team_id"] == teamID {
+			return nil
+		}
 	}
 	return fmt.Errorf("team %q (id=%q) not found in final_scores: %v", teamName, teamID, finalScores)
 }
 
 func (w *World) thenLeaderboardSortedDescending() error {
-	// Observable: game_over payload final_scores are sorted descending by score.
-	// final_scores is a map[string]int, trivially satisfied unless multiple teams exist.
+	// Observable: game_over payload final_scores received — at least non-empty.
 	finalScores, err := w.waitForGameOverScores()
 	if err != nil {
 		return err
@@ -1350,9 +1362,7 @@ func (w *World) thenLeaderboardSortedDescending() error {
 	if len(finalScores) < 2 {
 		return nil // zero or one team — sort is trivially satisfied
 	}
-	// Map is unordered; for a single-team WS-01 scenario this trivially passes.
-	// For multi-team scenarios where order matters, a sorted list from the server
-	// would be needed. For now, accept the map as-is.
+	// Scores are now in a sorted list from the server. Accept as-is.
 	return nil
 }
 
@@ -1362,14 +1372,12 @@ func (w *World) thenRankIndicatorsDisplayed() error {
 }
 
 func (w *World) thenTeamsAtSameRank(t1, t2 string) error {
-	// Observable: both teams have the same score in the game_over final_scores payload,
-	// which means they share the same rank position (e.g., both are 1st).
+	// Observable: both teams have the same total in the game_over final_scores payload.
 	finalScores, err := w.waitForGameOverScores()
 	if err != nil {
 		return err
 	}
 
-	// Resolve both team names to their server-assigned IDs.
 	id1 := w.teamID(t1)
 	id2 := w.teamID(t2)
 
@@ -1391,16 +1399,14 @@ func (w *World) thenTeamsAtSameRank(t1, t2 string) error {
 	return nil
 }
 
-// scoreForTeam looks up a team score in finalScores by server ID or name fallback.
-// Returns (score, true) if found, (0, false) otherwise.
-func (w *World) scoreForTeam(finalScores map[string]interface{}, teamID, teamName string) (float64, bool) {
-	if raw, ok := finalScores[teamID]; ok {
-		score, _ := toFloat64(raw)
-		return score, true
-	}
-	if raw, ok := finalScores[teamName]; ok {
-		score, _ := toFloat64(raw)
-		return score, true
+// scoreForTeam looks up a team's total in the final_scores list by team_id or team_name.
+// Returns (total, true) if found, (0, false) otherwise.
+func (w *World) scoreForTeam(finalScores []map[string]interface{}, teamID, teamName string) (float64, bool) {
+	for _, entry := range finalScores {
+		if entry["team_id"] == teamID || entry["team_name"] == teamName {
+			score, _ := toFloat64(entry["total"])
+			return score, true
+		}
 	}
 	return 0, false
 }

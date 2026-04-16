@@ -216,7 +216,9 @@ func (hh *HostHandler) handleEndRound(_ context.Context, client *hub.Client, ses
 	}
 	if err := session.ForceEndRound(payload.RoundIndex); err != nil {
 		_ = hh.hub.Send(client, hub.NewErrorEvent("end_round_failed", err.Error()))
+		return
 	}
+	hh.broadcastToAll(hub.NewRoundEndedEvent(payload.RoundIndex))
 }
 
 func (hh *HostHandler) handleBeginScoring(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
@@ -303,9 +305,14 @@ func (hh *HostHandler) handleCeremonyRevealAnswer(_ context.Context, client *hub
 
 	roundIndex := session.CurrentRoundIndex()
 	answer := session.CeremonyAnswer(roundIndex, payload.QuestionIndex)
-	evt := hub.NewCeremonyAnswerRevealedEvent(payload.QuestionIndex, answer)
-	// Answer revealed only to display room (not play room — boundary rule).
+	gameVerdicts := session.VerdictsByQuestion(roundIndex, payload.QuestionIndex)
+	verdicts := make([]hub.TeamVerdict, len(gameVerdicts))
+	for i, v := range gameVerdicts {
+		verdicts[i] = hub.TeamVerdict{TeamID: v.TeamID, TeamName: v.TeamName, Verdict: v.Verdict}
+	}
+	evt := hub.NewCeremonyAnswerRevealedEvent(payload.QuestionIndex, answer, verdicts)
 	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
+	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
 }
 
 func (hh *HostHandler) handlePublishScores(_ context.Context, client *hub.Client, session *game.GameSession, payloadRaw json.RawMessage) {
@@ -318,7 +325,11 @@ func (hh *HostHandler) handlePublishScores(_ context.Context, client *hub.Client
 		_ = hh.hub.Send(client, hub.NewErrorEvent("publish_scores_failed", err.Error()))
 		return
 	}
-	scores := session.RoundScores(payload.RoundIndex)
+	gameScores := session.RoundScoresWithNames(payload.RoundIndex)
+	scores := make([]hub.ScoreEntry, len(gameScores))
+	for i, s := range gameScores {
+		scores[i] = hub.ScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, RoundScore: s.RoundScore, RunningTotal: s.RunningTotal}
+	}
 	evt := hub.NewRoundScoresPublishedEvent(payload.RoundIndex, scores)
 	hh.broadcastToAll(evt)
 }
@@ -328,7 +339,11 @@ func (hh *HostHandler) handleEndGame(_ context.Context, client *hub.Client, sess
 		_ = hh.hub.Send(client, hub.NewErrorEvent("end_game_failed", err.Error()))
 		return
 	}
-	finalScores := session.FinalScores()
+	gameFinalScores := session.FinalScoresWithNames()
+	finalScores := make([]hub.FinalScoreEntry, len(gameFinalScores))
+	for i, s := range gameFinalScores {
+		finalScores[i] = hub.FinalScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, Total: s.Total}
+	}
 	evt := hub.NewGameOverEvent(finalScores)
 	hh.broadcastToAll(evt)
 }

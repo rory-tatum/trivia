@@ -51,6 +51,11 @@ type SubmissionReceivedPayload struct {
 	RoundIndex int    `json:"round_index"`
 }
 
+// RoundEndedPayload is broadcast when the host ends a round.
+type RoundEndedPayload struct {
+	RoundIndex int `json:"round_index"`
+}
+
 // ScoringOpenedPayload is broadcast when the host opens scoring.
 type ScoringOpenedPayload struct {
 	RoundIndex int `json:"round_index"`
@@ -69,16 +74,39 @@ type CeremonyQuestionShownPayload struct {
 	Question      game.QuestionPublic `json:"question"`
 }
 
+// TeamVerdict carries one team's verdict for a ceremony question.
+type TeamVerdict struct {
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	Verdict  string `json:"verdict"`
+}
+
 // CeremonyAnswerRevealedPayload is broadcast when an answer is revealed during ceremony.
 type CeremonyAnswerRevealedPayload struct {
-	QuestionIndex int    `json:"question_index"`
-	Answer        string `json:"answer"`
+	QuestionIndex int           `json:"question_index"`
+	Answer        string        `json:"answer"`
+	Verdicts      []TeamVerdict `json:"verdicts"`
+}
+
+// ScoreEntry carries one team's round score and running total.
+type ScoreEntry struct {
+	TeamID       string `json:"team_id"`
+	TeamName     string `json:"team_name"`
+	RoundScore   int    `json:"round_score"`
+	RunningTotal int    `json:"running_total"`
 }
 
 // RoundScoresPayload is broadcast when round scores are published.
 type RoundScoresPayload struct {
-	RoundIndex int            `json:"round_index"`
-	Scores     map[string]int `json:"scores"`
+	RoundIndex int          `json:"round_index"`
+	Scores     []ScoreEntry `json:"scores"`
+}
+
+// FinalScoreEntry carries one team's final total at game over.
+type FinalScoreEntry struct {
+	TeamID   string `json:"team_id"`
+	TeamName string `json:"team_name"`
+	Total    int    `json:"total"`
 }
 
 // ScoreUpdatedPayload is broadcast to the host when a verdict is marked.
@@ -90,7 +118,7 @@ type ScoreUpdatedPayload struct {
 
 // GameOverPayload is broadcast when the host ends the game.
 type GameOverPayload struct {
-	FinalScores map[string]int `json:"final_scores"`
+	FinalScores []FinalScoreEntry `json:"final_scores"`
 }
 
 // ErrorPayload is sent to a single client when an error occurs.
@@ -139,6 +167,11 @@ func NewSubmissionReceivedEvent(teamID, teamName string, roundIndex int) ServerE
 	}}
 }
 
+// NewRoundEndedEvent builds a RoundEndedEvent.
+func NewRoundEndedEvent(roundIndex int) ServerEvent {
+	return ServerEvent{Event: "round_ended", Payload: RoundEndedPayload{RoundIndex: roundIndex}}
+}
+
 // NewScoringOpenedEvent builds a ScoringOpenedEvent.
 func NewScoringOpenedEvent(roundIndex int) ServerEvent {
 	return ServerEvent{Event: "scoring_opened", Payload: ScoringOpenedPayload{RoundIndex: roundIndex}}
@@ -167,21 +200,21 @@ func NewCeremonyQuestionShownEvent(questionIndex int, q game.QuestionPublic) Ser
 }
 
 // NewCeremonyAnswerRevealedEvent builds a CeremonyAnswerRevealedEvent.
-func NewCeremonyAnswerRevealedEvent(questionIndex int, answer string) ServerEvent {
+func NewCeremonyAnswerRevealedEvent(questionIndex int, answer string, verdicts []TeamVerdict) ServerEvent {
 	return ServerEvent{Event: "ceremony_answer_revealed", Payload: CeremonyAnswerRevealedPayload{
-		QuestionIndex: questionIndex, Answer: answer,
+		QuestionIndex: questionIndex, Answer: answer, Verdicts: verdicts,
 	}}
 }
 
 // NewRoundScoresPublishedEvent builds a RoundScoresPublishedEvent.
-func NewRoundScoresPublishedEvent(roundIndex int, scores map[string]int) ServerEvent {
+func NewRoundScoresPublishedEvent(roundIndex int, scores []ScoreEntry) ServerEvent {
 	return ServerEvent{Event: "round_scores_published", Payload: RoundScoresPayload{
 		RoundIndex: roundIndex, Scores: scores,
 	}}
 }
 
 // NewGameOverEvent builds a GameOverEvent.
-func NewGameOverEvent(finalScores map[string]int) ServerEvent {
+func NewGameOverEvent(finalScores []FinalScoreEntry) ServerEvent {
 	return ServerEvent{Event: "game_over", Payload: GameOverPayload{FinalScores: finalScores}}
 }
 

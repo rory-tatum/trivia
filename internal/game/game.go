@@ -48,6 +48,13 @@ type draftKey struct {
 	questionIndex int
 }
 
+// verdictKey is the composite key for a stored verdict (teamID + round + question).
+type verdictKey struct {
+	teamID        string
+	roundIndex    int
+	questionIndex int
+}
+
 // GameSession is the in-memory implementation of the game domain.
 // It implements both GamePort and StateReader.
 type GameSession struct {
@@ -64,7 +71,8 @@ type GameSession struct {
 	teamOrder        []string
 	submissions      map[string][]Submission // teamID -> submissions
 	submittedTeams   map[string]bool
-	drafts           map[draftKey]string // teamID+round+question -> draft answer text
+	drafts           map[draftKey]string    // teamID+round+question -> draft answer text
+	verdicts         map[verdictKey]Verdict // teamID+round+question -> verdict
 	roundScoresMap   map[int]*RoundScores
 	totals           *TotalScores
 	ceremonyQuestion int
@@ -89,6 +97,7 @@ func NewGameSession() *GameSession {
 		submissions:    make(map[string][]Submission),
 		submittedTeams: make(map[string]bool),
 		drafts:         make(map[draftKey]string),
+		verdicts:       make(map[verdictKey]Verdict),
 		roundScoresMap: make(map[int]*RoundScores),
 		totals:         NewTotalScores(),
 	}
@@ -168,6 +177,7 @@ func (g *GameSession) MarkAnswerVerdict(teamID string, roundIndex, questionIndex
 		g.roundScoresMap[roundIndex] = rs
 	}
 	rs.ApplyVerdict(teamID, verdict)
+	g.verdicts[verdictKey{teamID: teamID, roundIndex: roundIndex, questionIndex: questionIndex}] = verdict
 	return nil
 }
 
@@ -514,4 +524,92 @@ func (g *GameSession) FinalScores() map[string]int {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.totals.AllTotals()
+}
+
+// TeamVerdict carries one team's verdict for a specific question.
+type TeamVerdict struct {
+	TeamID   string
+	TeamName string
+	Verdict  string
+}
+
+// VerdictsByQuestion returns the verdict for each registered team for the given
+// round and question. Teams that did not submit receive verdict "".
+func (g *GameSession) VerdictsByQuestion(roundIndex, questionIndex int) []TeamVerdict {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	result := make([]TeamVerdict, 0, len(g.teamOrder))
+	for _, teamID := range g.teamOrder {
+		verdict := g.verdictFor(teamID, roundIndex, questionIndex)
+		result = append(result, TeamVerdict{
+			TeamID:   teamID,
+			TeamName: g.teams[teamID].Name,
+			Verdict:  verdict,
+		})
+	}
+	return result
+}
+
+// verdictFor returns the verdict string for a team's answer to a specific question.
+// Returns empty string if no verdict has been recorded.
+// Must be called with at least a read lock held.
+func (g *GameSession) verdictFor(teamID string, roundIndex, questionIndex int) string {
+	v, ok := g.verdicts[verdictKey{teamID: teamID, roundIndex: roundIndex, questionIndex: questionIndex}]
+	if !ok {
+		return ""
+	}
+	return string(v)
+}
+
+// ScoreEntry carries one team's round score and cumulative running total.
+type ScoreEntry struct {
+	TeamID       string
+	TeamName     string
+	RoundScore   int
+	RunningTotal int
+}
+
+// RoundScoresWithNames returns round scores for each registered team, enriched
+// with team names and running totals.
+func (g *GameSession) RoundScoresWithNames(roundIndex int) []ScoreEntry {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	result := make([]ScoreEntry, 0, len(g.teamOrder))
+	rs, hasRound := g.roundScoresMap[roundIndex]
+	for _, teamID := range g.teamOrder {
+		roundScore := 0
+		if hasRound {
+			roundScore = rs.TeamScore(teamID)
+		}
+		result = append(result, ScoreEntry{
+			TeamID:       teamID,
+			TeamName:     g.teams[teamID].Name,
+			RoundScore:   roundScore,
+			RunningTotal: g.totals.TeamTotal(teamID),
+		})
+	}
+	return result
+}
+
+// FinalScoreEntry carries one team's final cumulative total at game over.
+type FinalScoreEntry struct {
+	TeamID   string
+	TeamName string
+	Total    int
+}
+
+// FinalScoresWithNames returns the final cumulative scores for each registered team,
+// enriched with team names.
+func (g *GameSession) FinalScoresWithNames() []FinalScoreEntry {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	result := make([]FinalScoreEntry, 0, len(g.teamOrder))
+	for _, teamID := range g.teamOrder {
+		result = append(result, FinalScoreEntry{
+			TeamID:   teamID,
+			TeamName: g.teams[teamID].Name,
+			Total:    g.totals.TeamTotal(teamID),
+		})
+	}
+	return result
 }
