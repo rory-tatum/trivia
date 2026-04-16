@@ -305,7 +305,7 @@ Feature: Play UI — Player Interface
   # US-09: Round Scores Display — team names in payload (DEP-04)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-09
+  @driving_port @real-io @US-09
   Scenario: Play room receives round scores with team names when the quizmaster publishes them
     Given a quiz file "scores-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -316,7 +316,7 @@ Feature: Play UI — Player Interface
     And the scores list includes "Team Awesome" with their round score and running total
     And the scores list includes "The Brainiacs" with their round score and running total
 
-  @skip @driving_port @real-io @US-09
+  @driving_port @real-io @US-09
   Scenario: Play room receives the final leaderboard with team names at game over
     Given a quiz file "final-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -325,7 +325,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the final scores notification
     And the final scores include team names and totals for all teams
 
-  @skip @driving_port @real-io @US-09
+  @driving_port @real-io @US-09
   Scenario: Next round starts from the scores screen
     Given a quiz file "two-round.yaml" with 2 rounds of 2 text questions each
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -481,7 +481,7 @@ Feature: Play UI — Player Interface
     When "Team Awesome" connects to the play room
     Then the connection is accepted and "Team Awesome" receives a state snapshot
 
-  @skip @real-io @adapter-integration @US-09
+  @real-io @adapter-integration @US-09
   Scenario: Round scores received by the player include team names alongside each score
     Given a quiz file "adapter-scores.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

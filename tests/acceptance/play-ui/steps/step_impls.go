@@ -406,19 +406,179 @@ func (w *World) givenTeamHasValidToken(teamName string) error {
 }
 
 func (w *World) givenTwoTeamsCompletedRoundWithScoring(team1, team2 string, roundIndex int) error {
-	return godog.ErrPending
+	// Load quiz fixture if not already loaded.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	// Register both teams in the play room.
+	for _, teamName := range []string{team1, team2} {
+		d := w.ensurePlayDriver(teamName)
+		if err := w.ensurePlayConnected(d, teamName); err != nil {
+			return fmt.Errorf("connect team %q: %w", teamName, err)
+		}
+		if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+			return fmt.Errorf("register team %q: %w", teamName, err)
+		}
+		key := connectionKey(rolePlay, teamName)
+		if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+			return fmt.Errorf("team %q did not register", teamName)
+		}
+	}
+	// Start round via host.
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("start round: %w", err)
+	}
+	// Wait for both teams to receive round_started.
+	for _, teamName := range []string{team1, team2} {
+		key := connectionKey(rolePlay, teamName)
+		if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
+			return fmt.Errorf("team %q did not receive round_started", teamName)
+		}
+	}
+	// End round.
+	if err := hd.HostEndRound(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("end round: %w", err)
+	}
+	for _, teamName := range []string{team1, team2} {
+		key := connectionKey(rolePlay, teamName)
+		if _, ok := w.waitForEvent(key, eventRoundEnded, eventWaitTimeout); !ok {
+			return fmt.Errorf("team %q did not receive round_ended", teamName)
+		}
+	}
+	// Both teams submit.
+	for _, teamName := range []string{team1, team2} {
+		d := w.ensurePlayDriver(teamName)
+		answers := make([]map[string]interface{}, w.totalQuestions)
+		for i := 0; i < w.totalQuestions; i++ {
+			answers[i] = map[string]interface{}{"question_index": i, "answer": ""}
+		}
+		if err := d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers); err != nil {
+			return fmt.Errorf("submit team %q: %w", teamName, err)
+		}
+		key := connectionKey(rolePlay, teamName)
+		if _, ok := w.waitForEvent(key, eventSubmissionAck, eventWaitTimeout); !ok {
+			return fmt.Errorf("team %q did not receive submission_ack", teamName)
+		}
+	}
+	// Begin scoring to enter SCORING/CEREMONY state.
+	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("begin scoring: %w", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	// Run ceremony: show and reveal each question so server reaches SCORES_PUBLISHED state.
+	for i := 0; i < w.totalQuestions; i++ {
+		if err := hd.HostCeremonyShowQuestion(w.ctx, i); err != nil {
+			return fmt.Errorf("ceremony show question %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+		if err := hd.HostCeremonyRevealAnswer(w.ctx, i); err != nil {
+			return fmt.Errorf("ceremony reveal answer %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func (w *World) givenTeamCompletedRoundWithScoring(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	// Single-team variant used by ADP-02.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return fmt.Errorf("connect team %q: %w", teamName, err)
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return fmt.Errorf("register team %q: %w", teamName, err)
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not register", teamName)
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_started", teamName)
+	}
+	if err := hd.HostEndRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	if _, ok := w.waitForEvent(key, eventRoundEnded, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_ended", teamName)
+	}
+	answers := make([]map[string]interface{}, w.totalQuestions)
+	for i := 0; i < w.totalQuestions; i++ {
+		answers[i] = map[string]interface{}{"question_index": i, "answer": ""}
+	}
+	if err := d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers); err != nil {
+		return err
+	}
+	if _, ok := w.waitForEvent(key, eventSubmissionAck, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive submission_ack", teamName)
+	}
+	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("begin scoring: %w", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	for i := 0; i < w.totalQuestions; i++ {
+		if err := hd.HostCeremonyShowQuestion(w.ctx, i); err != nil {
+			return fmt.Errorf("ceremony show question %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+		if err := hd.HostCeremonyRevealAnswer(w.ctx, i); err != nil {
+			return fmt.Errorf("ceremony reveal answer %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func (w *World) givenTwoTeamsRoundCompleteAndScoresPublished(team1, team2 string, roundIndex int) error {
-	return godog.ErrPending
+	// Complete ceremony for two teams and then publish scores.
+	if err := w.givenTwoTeamsCompletedRoundWithScoring(team1, team2, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("publish scores: %w", err)
+	}
+	// Wait for team1 to receive round_scores_published.
+	key := connectionKey(rolePlay, team1)
+	if _, ok := w.waitForEvent(key, eventRoundScoresPublished, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_scores_published in setup", team1)
+	}
+	return nil
 }
 
 func (w *World) givenTeamOnScoresScreen(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	// Single-team: complete round, ceremony, publish scores — team is now on scores screen.
+	if err := w.givenTeamCompletedRoundWithScoring(teamName, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("publish scores: %w", err)
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventRoundScoresPublished, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_scores_published in givenTeamOnScoresScreen", teamName)
+	}
+	return nil
 }
 
 func (w *World) givenGameInCeremonyPhase(roundIndex int) error {
@@ -1128,11 +1288,38 @@ func (w *World) thenScoresListIncludesTeamRoundScore(teamName string) error {
 }
 
 func (w *World) thenTeamReceivesFinalScores(teamName string) error {
-	return godog.ErrPending
+	// Observable: play connection received game_over event.
+	key := connectionKey(rolePlay, teamName)
+	_, ok := w.waitForEvent(key, eventGameOver, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("team %q did not receive game_over event", teamName)
+	}
+	return nil
 }
 
 func (w *World) thenFinalScoresHaveTeamNames() error {
-	return godog.ErrPending
+	// Observable: game_over payload has a final_scores array with team_name in each entry.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event == eventGameOver {
+				finalScores, ok := msg.Payload["final_scores"].([]interface{})
+				if !ok || len(finalScores) == 0 {
+					return fmt.Errorf("game_over payload has no final_scores array: %v", msg.Payload)
+				}
+				for _, raw := range finalScores {
+					entry, _ := raw.(map[string]interface{})
+					if _, ok := entry["team_name"]; !ok {
+						return fmt.Errorf("final_scores entry missing team_name field: %v", entry)
+					}
+					if _, ok := entry["total"]; !ok {
+						return fmt.Errorf("final_scores entry missing total field: %v", entry)
+					}
+				}
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no game_over event found on any connection")
 }
 
 func (w *World) thenTeamReceivesGameState(teamName string) error {
@@ -1398,11 +1585,25 @@ func (w *World) thenConnectionAcceptedWithSnapshot(teamName string) error {
 }
 
 func (w *World) thenRoundScoresPayloadHasStructuredList(teamName string) error {
-	return godog.ErrPending
+	// Observable: round_scores_published payload has a non-empty scores array.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventRoundScoresPublished {
+				continue
+			}
+			scores, ok := msg.Payload["scores"].([]interface{})
+			if !ok || len(scores) == 0 {
+				return false, fmt.Errorf("round_scores_published has no scores array: %v", msg.Payload)
+			}
+			return true, nil
+		}
+		return false, fmt.Errorf("team %q has not received round_scores_published", teamName)
+	})
 }
 
 func (w *World) thenEachScoreEntryHasTeamName() error {
-	return godog.ErrPending
+	return w.thenScoresListHasTeamNames()
 }
 
 func (w *World) thenCeremonyAnswerPayloadHasVerdicts(teamName string) error {
