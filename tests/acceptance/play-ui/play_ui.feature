@@ -236,7 +236,7 @@ Feature: Play UI — Player Interface
   # US-07: Post-Submit Waiting Screen — submission_received to play room (DEP-03)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-07
+  @driving_port @real-io @US-07
   Scenario: Play room is notified in real time when another team submits their answers
     Given a quiz file "multi-team.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -247,7 +247,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives a notification that "The Brainiacs" has submitted
     And the notification includes "The Brainiacs" team name
 
-  @skip @driving_port @real-io @US-07
+  @driving_port @real-io @US-07
   Scenario: Submitting team receives a notification about their own submission in the play room
     Given a quiz file "self-notify.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

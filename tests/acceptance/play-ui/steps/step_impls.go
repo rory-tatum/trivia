@@ -311,7 +311,20 @@ func (w *World) givenTeamRegistered(teamName string) error {
 }
 
 func (w *World) givenTwoTeamsRegistered(team1, team2 string) error {
-	return godog.ErrPending
+	for _, teamName := range []string{team1, team2} {
+		d := w.ensurePlayDriver(teamName)
+		if err := w.ensurePlayConnected(d, teamName); err != nil {
+			return err
+		}
+		if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+			return err
+		}
+		key := connectionKey(rolePlay, teamName)
+		if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+			return fmt.Errorf("team %q did not register in givenTwoTeamsRegistered", teamName)
+		}
+	}
+	return nil
 }
 
 func (w *World) givenTeamRegisteredAndRoundActiveWithQuestions(teamName string, roundIndex, questionCount int) error {
@@ -830,19 +843,71 @@ func (w *World) thenPlayRoomReceivesSubmissionNotification(teamName string) erro
 }
 
 func (w *World) thenTeamReceivesOtherTeamSubmissionNotification(observerTeam, submittingTeam string) error {
-	return godog.ErrPending
+	// Observable: observer's play connection received submission_received with submittingTeam's name.
+	key := connectionKey(rolePlay, observerTeam)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventSubmissionReceived {
+				continue
+			}
+			name, _ := msg.Payload["team_name"].(string)
+			if name == submittingTeam {
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("team %q has not received submission_received for %q", observerTeam, submittingTeam)
+	})
 }
 
 func (w *World) thenNotificationIncludesTeamName(teamName string) error {
-	return godog.ErrPending
+	// Observable: any play connection has a submission_received with the given team_name.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event == eventSubmissionReceived {
+				name, _ := msg.Payload["team_name"].(string)
+				if name == teamName {
+					return nil
+				}
+			}
+		}
+	}
+	return fmt.Errorf("no submission_received with team_name %q found on any connection", teamName)
 }
 
 func (w *World) thenTeamReceivesOwnSubmissionNotification(teamName string) error {
-	return godog.ErrPending
+	// Observable: the submitting team's play connection received submission_received for itself.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event == eventSubmissionReceived {
+				name, _ := msg.Payload["team_name"].(string)
+				if name == teamName {
+					return true, nil
+				}
+			}
+		}
+		return false, fmt.Errorf("team %q has not received submission_received for itself", teamName)
+	})
 }
 
 func (w *World) thenNotificationIncludesTeamNameAndRound(teamName string) error {
-	return godog.ErrPending
+	// Observable: submission_received for teamName includes team_name and round_index fields.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventSubmissionReceived {
+				continue
+			}
+			name, _ := msg.Payload["team_name"].(string)
+			if name != teamName {
+				continue
+			}
+			if _, ok := msg.Payload["round_index"]; !ok {
+				return fmt.Errorf("submission_received for %q missing round_index field: %v", teamName, msg.Payload)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no submission_received with team_name %q found", teamName)
 }
 
 func (w *World) thenTeamReceivesCeremonyQuestion(teamName string) error {
