@@ -262,7 +262,7 @@ Feature: Play UI — Player Interface
   # US-08: Ceremony View — ceremony events to play room (DEP-02)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-08
+  @driving_port @real-io @US-08
   Scenario: Play room receives the ceremony question when the quizmaster shows it
     Given a quiz file "ceremony-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

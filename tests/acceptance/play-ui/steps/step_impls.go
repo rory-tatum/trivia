@@ -357,7 +357,12 @@ func (w *World) givenTeamSubmitted(teamName string, roundIndex int) error {
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyStarted(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	// Set up: register team, end round, team submits. Ceremony transition is done
+	// by the When step (whenQuizmasterShowsCeremonyQuestion calls HostBeginScoring).
+	if err := w.givenRoundEndedWithTeam(roundIndex, teamName); err != nil {
+		return err
+	}
+	return w.givenTeamSubmitted(teamName, roundIndex)
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyAtQuestion(teamName string, roundIndex, questionIndex int) error {
@@ -921,7 +926,25 @@ func (w *World) thenTeamReceivesCeremonyQuestion(teamName string) error {
 }
 
 func (w *World) thenCeremonyQuestionHasText() error {
-	return godog.ErrPending
+	// Observable: any ceremony_question_shown event has a non-empty question text.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventCeremonyQuestionShown {
+				continue
+			}
+			// Check question.text or top-level text field.
+			if q, ok := msg.Payload["question"].(map[string]interface{}); ok {
+				if text, _ := q["text"].(string); text != "" {
+					return nil
+				}
+			}
+			if text, _ := msg.Payload["text"].(string); text != "" {
+				return nil
+			}
+			return fmt.Errorf("ceremony_question_shown payload has no question text: %v", msg.Payload)
+		}
+	}
+	return fmt.Errorf("no ceremony_question_shown event received on any connection")
 }
 
 func (w *World) thenTeamReceivesCeremonyAnswer(teamName string) error {
