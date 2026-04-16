@@ -446,8 +446,8 @@ Feature: Host UI — Quizmaster Panel
     Then the WebSocket dial is refused with an abnormal close
     And no messages are received on the connection
 
-  # @skip @infrastructure-failure @in-memory @US-03
-  @skip @infrastructure-failure @in-memory @US-03
+  # @infrastructure-failure @in-memory @US-03
+  @infrastructure-failure @in-memory @US-03
   Scenario: Revealing a question out of order is rejected by the server
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "order-test.yaml" with 1 round of 3 text questions
