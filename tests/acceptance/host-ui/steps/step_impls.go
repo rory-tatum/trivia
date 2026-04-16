@@ -242,23 +242,11 @@ func (w *World) givenAllAnswersMarked(roundIndex int) error {
 	if err := w.givenScoringOpen(roundIndex); err != nil {
 		return fmt.Errorf("opening scoring for round %d: %w", roundIndex, err)
 	}
-	driver := w.hostDriver()
 	// Mark all teams' answers for the round using the actual question count from round_started.
 	if w.totalQuestions == 0 {
 		return fmt.Errorf("givenAllAnswersMarked: totalQuestions is 0 — round_started event not received or question_count missing")
 	}
-	for teamName, teamID := range w.teamIDs {
-		for qi := 0; qi < w.totalQuestions; qi++ {
-			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
-				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
-			}
-			// Wait for score_updated to confirm each mark was accepted.
-			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
-				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
-			}
-		}
-	}
-	return nil
+	return w.markAllTeamsAnswersCorrect(roundIndex, w.totalQuestions)
 }
 
 func (w *World) givenScoresPublished(roundIndex int) error {
@@ -294,15 +282,8 @@ func (w *World) givenRoundFullyComplete(roundIndex int) error {
 		return err
 	}
 	// Mark all answers while in SCORING state.
-	for teamName, teamID := range w.teamIDs {
-		for qi := 0; qi < defaultQuestionCount; qi++ {
-			if err := w.hostDriver().HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
-				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
-			}
-			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
-				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
-			}
-		}
+	if err := w.markAllTeamsAnswersCorrect(roundIndex, defaultQuestionCount); err != nil {
+		return err
 	}
 	// State machine: SCORING → CEREMONY → ROUND_SCORES.
 	// Ceremony must come before publish.
@@ -342,7 +323,7 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 			return fmt.Errorf("givenRoundPlayedWithEqualScores: connecting display: %w", err)
 		}
 	}
-	if err := w.givenRoundEnded(roundIndex, 2); err != nil {
+	if err := w.givenRoundEnded(roundIndex, defaultQuestionCount); err != nil {
 		return err
 	}
 	if err := w.beginScoringAndWait(roundIndex); err != nil {
@@ -360,7 +341,7 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 	}
 	// State machine requires SCORING → CEREMONY → ROUND_SCORES.
 	// Run ceremony (show+reveal each question) before publishing scores.
-	if err := w.runCeremony(2); err != nil {
+	if err := w.runCeremony(defaultQuestionCount); err != nil {
 		return fmt.Errorf("running ceremony before publish: %w", err)
 	}
 	return w.hostDriver().HostPublishScores(w.ctx, roundIndex)
@@ -380,16 +361,8 @@ func (w *World) givenMarcusOnCeremonyPanel(roundIndex int) error {
 	if w.totalQuestions == 0 {
 		return fmt.Errorf("givenMarcusOnCeremonyPanel: totalQuestions is 0 — round_started not received")
 	}
-	driver := w.hostDriver()
-	for teamName, teamID := range w.teamIDs {
-		for qi := 0; qi < w.totalQuestions; qi++ {
-			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
-				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
-			}
-			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
-				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
-			}
-		}
+	if err := w.markAllTeamsAnswersCorrect(roundIndex, w.totalQuestions); err != nil {
+		return err
 	}
 	// ceremonyStarted flag: ceremony panel is visible (client-side transition).
 	w.ceremonyStarted = true
@@ -419,6 +392,24 @@ func (w *World) waitForScoringData() error {
 	_, ok := w.waitForEvent(roleHost, eventScoringData, eventWaitTimeout)
 	if !ok {
 		return fmt.Errorf("timed out waiting for scoring_data event")
+	}
+	return nil
+}
+
+// markAllTeamsAnswersCorrect marks every team's answer for each question in the round
+// as "correct" and waits for the score_updated event after each mark.
+// Shared by givenAllAnswersMarked, givenRoundFullyComplete, and givenMarcusOnCeremonyPanel.
+func (w *World) markAllTeamsAnswersCorrect(roundIndex, questionCount int) error {
+	driver := w.hostDriver()
+	for teamName, teamID := range w.teamIDs {
+		for qi := 0; qi < questionCount; qi++ {
+			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
+				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
+			}
+			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
+				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
+			}
+		}
 	}
 	return nil
 }
