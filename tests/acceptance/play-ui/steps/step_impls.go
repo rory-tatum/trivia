@@ -1957,7 +1957,25 @@ func (w *World) thenChoicesListHasCount(count int) error {
 }
 
 func (w *World) thenQuestionHasNoChoices(teamName string) error {
-	return godog.ErrPending
+	// Observable: the question_revealed event for teamName has an absent or empty choices array.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			choices, _ := question["choices"].([]interface{})
+			if len(choices) == 0 {
+				return true, nil
+			}
+			return false, fmt.Errorf("expected no choices list but got %d choices: %v", len(choices), choices)
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenQuestionHasMultiPartIndicator(teamName string) error {

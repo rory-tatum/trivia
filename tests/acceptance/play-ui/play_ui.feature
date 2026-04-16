@@ -370,7 +370,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the question with a non-empty list of answer choices
     And the choices list contains 4 options
 
-  @skip @driving_port @real-io @US-11
+  @driving_port @real-io @US-11
   Scenario: Text questions are revealed without a choices list
     Given a quiz file "text-only.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
