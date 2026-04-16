@@ -438,8 +438,8 @@ Feature: Host UI — Quizmaster Panel
     Then the host panel receives a quiz confirmation with 2 rounds and 6 questions
     And no error is shown
 
-  # @skip @real-io @adapter-integration @US-01
-  @skip @real-io @adapter-integration @US-01
+  # @real-io @adapter-integration @US-01
+  @real-io @adapter-integration @US-01
   Scenario: WebSocket upgrade is rejected with a real HTTP 403 for a wrong token
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When Marcus dials the WebSocket endpoint with token "definitely-wrong"
