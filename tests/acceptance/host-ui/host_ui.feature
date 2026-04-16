@@ -365,8 +365,8 @@ Feature: Host UI — Quizmaster Panel
     Then the final leaderboard is displayed
     And "The Brainiacs" and "Quiz Killers" appear at the same rank position
 
-  # @skip @driving_port @real-io @US-06
-  @skip @driving_port @real-io @US-06
+  # @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Marcus can end the game early after only one of three rounds
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "three-round-game.yaml" with 3 rounds of 2 text questions each
