@@ -393,8 +393,8 @@ Feature: Host UI — Quizmaster Panel
     And the file path input remains editable
     And no round controls appear
 
-  # @skip @infrastructure-failure @in-memory @US-02
-  @skip @infrastructure-failure @in-memory @US-02
+  # @infrastructure-failure @in-memory @US-02
+  @infrastructure-failure @in-memory @US-02
   Scenario: Quiz load fails when the file path contains no extension or is malformed
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid host token
