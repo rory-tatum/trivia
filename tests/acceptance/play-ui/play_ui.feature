@@ -271,7 +271,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the ceremony question on their device
     And the ceremony question includes the question text
 
-  @skip @driving_port @real-io @US-08
+  @driving_port @real-io @US-08
   Scenario: Play room receives the revealed answer and team verdicts during ceremony
     Given a quiz file "verdict-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -490,7 +490,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the round scores notification
     And the scores notification includes a structured list with a team name in each entry
 
-  @skip @real-io @adapter-integration @US-08
+  @real-io @adapter-integration @US-08
   Scenario: Ceremony answer received by the player includes a result for each team
     Given a quiz file "adapter-ceremony.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

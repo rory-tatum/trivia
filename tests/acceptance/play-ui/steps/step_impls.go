@@ -366,7 +366,29 @@ func (w *World) givenTeamSubmittedAndCeremonyStarted(teamName string, roundIndex
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyAtQuestion(teamName string, roundIndex, questionIndex int) error {
-	return godog.ErrPending
+	// Set up: register team, end round, team submits, then advance ceremony to the given question.
+	if err := w.givenRoundEndedWithTeam(roundIndex, teamName); err != nil {
+		return err
+	}
+	if err := w.givenTeamSubmitted(teamName, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("begin scoring: %w", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	// Show each question up to and including questionIndex.
+	for i := 0; i <= questionIndex; i++ {
+		if err := hd.HostCeremonyShowQuestion(w.ctx, i); err != nil {
+			return fmt.Errorf("show ceremony question %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func (w *World) givenTeamHasValidToken(teamName string) error {
@@ -975,11 +997,49 @@ func (w *World) thenVerdictsShowTeamResults() error {
 }
 
 func (w *World) thenVerdictsIncludeTeam(teamName string) error {
-	return godog.ErrPending
+	// Observable: ceremony_answer_revealed verdicts array contains an entry with team_name == teamName.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventCeremonyAnswerReveal {
+				continue
+			}
+			verdicts, ok := msg.Payload["verdicts"].([]interface{})
+			if !ok {
+				return fmt.Errorf("ceremony_answer_revealed missing verdicts array: %v", msg.Payload)
+			}
+			for _, raw := range verdicts {
+				entry, _ := raw.(map[string]interface{})
+				if entry["team_name"] == teamName {
+					return nil
+				}
+			}
+			return fmt.Errorf("verdicts array does not include team %q: %v", teamName, verdicts)
+		}
+	}
+	return fmt.Errorf("no ceremony_answer_revealed event found on any connection")
 }
 
 func (w *World) thenEachVerdictHasResult() error {
-	return godog.ErrPending
+	// Observable: every verdict entry in ceremony_answer_revealed has a verdict field.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventCeremonyAnswerReveal {
+				continue
+			}
+			verdicts, ok := msg.Payload["verdicts"].([]interface{})
+			if !ok {
+				return fmt.Errorf("ceremony_answer_revealed missing verdicts array: %v", msg.Payload)
+			}
+			for _, raw := range verdicts {
+				entry, _ := raw.(map[string]interface{})
+				if _, ok := entry["verdict"]; !ok {
+					return fmt.Errorf("verdict entry missing verdict field: %v", entry)
+				}
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no ceremony_answer_revealed event found on any connection")
 }
 
 func (w *World) thenTeamHasReceivedCeremonyQuestionCount(teamName string, count int) error {
@@ -1328,5 +1388,17 @@ func (w *World) thenCeremonyAnswerPayloadHasVerdicts(teamName string) error {
 }
 
 func (w *World) thenVerdictsListPresent() error {
-	return godog.ErrPending
+	// Observable: ceremony_answer_revealed payload has a verdicts array (may be empty if no teams submitted).
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventCeremonyAnswerReveal {
+				continue
+			}
+			if _, ok := msg.Payload["verdicts"]; ok {
+				return nil
+			}
+			return fmt.Errorf("ceremony_answer_revealed payload missing verdicts field: %v", msg.Payload)
+		}
+	}
+	return fmt.Errorf("no ceremony_answer_revealed event found on any connection")
 }
