@@ -1,0 +1,763 @@
+schema_version: 1
+
+journey:
+  name: "Player — Trivia Game (/play)"
+  goal: "Join a trivia game, answer questions collaboratively, submit, and follow the ceremony"
+  personas:
+    - id: priya_nair
+      role: Team captain — enters answers on behalf of team
+      device: Android / Chrome
+      emotional_start: Anxious (responsible for team score)
+    - id: jordan_kim
+      role: Casual member — participates, occasionally rejoins
+      device: iPhone / Safari
+      emotional_start: Relaxed (social, low-stakes)
+  extends: docs/ux/trivia/journey-play-visual.md
+  jtbd_grounding:
+    - J1: Join the Game Quickly Without Friction
+    - J2: Rejoin Seamlessly After Disruption
+    - J3: Capture Answers Collaboratively in Real Time
+    - J4: Submit Final Answers with Confidence
+    - J5: Follow Ceremony and Know Score
+    - J6: Understand Game State at All Times
+    - J7: Answer Different Question Types Naturally
+
+  emotional_arc:
+    start: "Uncertain (new URL, social pressure to join fast)"
+    early: "Relieved (team identity confirmed, in the lobby)"
+    middle: "Engaged → Focused (questions appearing, answering collaboratively)"
+    late: "Confident (review + submission committed)"
+    end: "Elated (ceremony + scores — the payoff moment)"
+
+steps:
+  - id: S01
+    name: "Join — First Visit"
+    trigger: "Player opens /play URL for the first time (no localStorage)"
+    jtbd: [J1]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  TRIVIA NIGHT          [ /play ] |
+      +----------------------------------+
+      |  Welcome!                        |
+      |  Enter your team name:           |
+      |  +----------------------------+  |
+      |  |                            |  |
+      |  +----------------------------+  |
+      |  [ Join Game ]                   |
+      |  Use the same browser each       |
+      |  round to stay connected.        |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: team_name
+        source: player input
+        stored_as: localStorage.trivia_team_name
+        consumers: [S03-lobby, S05-answer-form, S10-post-submit, S12-scores]
+      - name: team_id
+        source: server → team_registered event
+        stored_as: localStorage.trivia_team_id
+        consumers: [S02-rejoin, submit_answers message, scoring]
+      - name: device_token
+        source: server → team_registered event
+        stored_as: localStorage.trivia_device_token
+        consumers: [S02-rejoin via team_rejoin message]
+
+    messages_sent:
+      - event: team_register
+        payload: {team_name: "${team_name}"}
+
+    messages_received:
+      - event: team_registered
+        payload: {team_id: "uuid", device_token: "uuid"}
+      - event: error
+        payload: {code: "DUPLICATE_TEAM_NAME"}
+
+    emotional_state:
+      entry: "Uncertain"
+      exit: "Relieved"
+
+    integration_checkpoint: |
+      team_id and device_token stored in localStorage before proceeding to lobby.
+      On DUPLICATE_TEAM_NAME: inline error displayed, input re-focused, no navigation.
+
+    failure_modes:
+      - "DUPLICATE_TEAM_NAME: another team has this name"
+      - "Network error: WebSocket not established before join attempt"
+      - "Empty team name submitted: client-side validation blocks send"
+
+    gherkin: |
+      Scenario: Player joins the game for the first time
+        Given Priya opens /play on her phone
+        And she has no stored team identity
+        When she enters "Team Awesome" and taps Join Game
+        Then she sees the lobby screen with "Team Awesome — You're in!"
+        And "Team Awesome" appears in the teams list
+
+      Scenario: Team name is already taken
+        Given "The Brainiacs" has already registered
+        When Jordan enters "The Brainiacs" and taps Join Game
+        Then an inline error reads "That name is taken — try another"
+        And the input field retains focus for immediate retry
+
+  - id: S02
+    name: "Auto-Rejoin — Return Visit"
+    trigger: "Player opens /play with valid team_id and device_token in localStorage"
+    jtbd: [J2]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  TRIVIA NIGHT          [ /play ] |
+      +----------------------------------+
+      |  Welcome back,                   |
+      |  Team Awesome!                   |
+      |  Rejoining the game...           |
+      |  ████████████████████ 100%       |
+      |  [ That's not us — change team ] |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: team_id
+        source: localStorage.trivia_team_id
+        consumers: [team_rejoin message]
+      - name: device_token
+        source: localStorage.trivia_device_token
+        consumers: [team_rejoin message]
+      - name: draft_answers
+        source: localStorage.trivia_draft_answers
+        consumers: [S05-answer-form restore on reconnect]
+
+    messages_sent:
+      - event: team_rejoin
+        payload: {team_id: "${team_id}", device_token: "${device_token}"}
+
+    messages_received:
+      - event: state_snapshot
+        note: "Routes player to correct screen based on game_state"
+      - event: error
+        payload: {code: "TEAM_NOT_FOUND"}
+        note: "Falls back to S01 join screen"
+
+    emotional_state:
+      entry: "Anxious (worried about losing answers)"
+      exit: "Relieved (recognised and restored)"
+
+    integration_checkpoint: |
+      After team_rejoin, state_snapshot determines correct screen to render.
+      Draft answers from localStorage are restored to answer form if game_state = ROUND_ACTIVE.
+      On TEAM_NOT_FOUND: clear localStorage, show join screen with message "We couldn't find your team — please join again."
+
+    failure_modes:
+      - "TEAM_NOT_FOUND: device_token unrecognised (session reset or different device)"
+      - "WebSocket reconnect fails: show reconnecting banner, retry with exponential backoff"
+
+    gherkin: |
+      Scenario: Player rejoins after phone goes to sleep
+        Given Jordan closed his Safari tab during Round 1
+        And his team_id and device_token are stored in localStorage
+        When he reopens /play
+        Then the screen shows "Welcome back, Team Awesome!"
+        And his draft answers for Round 1 are restored in the answer form
+
+      Scenario: Rejoin token not recognised
+        Given Priya's device_token is no longer valid (session reset)
+        When she opens /play
+        Then the auto-rejoin attempt shows "We couldn't find your team — please join again"
+        And the join form appears ready for a fresh team name
+
+  - id: S03
+    name: "Lobby — Waiting for Game"
+    trigger: "Player lands here after join or rejoin when game_state = LOBBY"
+    jtbd: [J1, J6]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  TRIVIA NIGHT          [ /play ] |
+      +----------------------------------+
+      |  Team Awesome                    |
+      |  You're in!                      |
+      |  ──────────────────────────────  |
+      |  Waiting for Marcus to           |
+      |  start the game...               |
+      |  Teams here:                     |
+      |  • Team Awesome (you)            |
+      |  • The Brainiacs                 |
+      |  • Quiz Killers                  |
+      |  Get ready!                      |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: teams_list
+        source: state_snapshot.teams
+        consumers: [lobby display]
+      - name: quiz_title
+        source: state_snapshot.quiz_title
+        consumers: [round header once game starts]
+
+    messages_received:
+      - event: state_snapshot
+        note: "Contains teams list and quiz title"
+      - event: team_joined
+        note: "New team joins — adds to teams list in real time"
+      - event: round_started
+        note: "Transitions to S04"
+
+    emotional_state:
+      entry: "Relieved"
+      exit: "Engaged (anticipation as round starts)"
+
+    integration_checkpoint: |
+      team_joined events update the teams list without page reload.
+      round_started transitions UI to S04 immediately.
+
+    failure_modes:
+      - "round_started arrives before lobby renders: state_snapshot handles this via game_state routing"
+
+    gherkin: |
+      Scenario: Player sees other teams while waiting in lobby
+        Given Team Awesome, The Brainiacs, and Quiz Killers have all joined
+        When Priya's lobby screen renders
+        Then she sees all three teams listed
+        And the message reads "Waiting for Marcus to start the game..."
+
+      Scenario: Game starts while player is in lobby
+        Given Priya is on the lobby screen
+        When the quizmaster starts Round 1
+        Then her screen transitions to the Round Active view
+        And Round 1, Q1 appears immediately
+
+  - id: S04
+    name: "Round Active — Question Revealed"
+    trigger: "question_revealed event received (first question of a round)"
+    jtbd: [J3, J6]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: General Knowledge      |
+      |  ■ 1 of 8 questions revealed     |
+      +----------------------------------+
+      |  Q1  What is the capital         |
+      |      of France?                  |
+      |  Your answer:                    |
+      |  +----------------------------+  |
+      |  |                            |  |
+      |  +----------------------------+  |
+      |  Q2–Q8 not yet revealed.         |
+      |  Answers saved as you type.      |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: revealed_questions
+        source: question_revealed events (accumulated array)
+        consumers: [S05-answer-form, S08-review]
+      - name: round_name
+        source: state_snapshot.rounds[current_round].name
+        consumers: [screen header]
+      - name: draft_answers
+        source: localStorage.trivia_draft_answers[round][q_index]
+        consumers: [answer form fields, S08-review]
+
+    messages_received:
+      - event: question_revealed
+        payload: {question: {text, index}, revealed_count, total_questions}
+      - event: round_ended
+        note: "Transitions to S08 end-of-round review"
+
+    messages_sent:
+      - event: draft_answer
+        trigger: "on input blur or debounced keystroke (300ms)"
+        payload: {team_name, round_index, question_index, answer}
+
+    emotional_state:
+      entry: "Engaged"
+      exit: "Focused (answer being crafted)"
+
+    integration_checkpoint: |
+      Each question_revealed appends to revealed_questions list.
+      Draft saves to localStorage on every keystroke (debounced 300ms).
+      draft_answer sent to server on blur for server-side draft persistence.
+
+    failure_modes:
+      - "question_revealed arrives when player is on different screen: accumulate in state, render when they return"
+      - "draft_answer send fails (connection lost): localStorage holds state until reconnect"
+
+    gherkin: |
+      Scenario: First question appears when the round starts
+        Given Team Awesome is in the lobby
+        When Marcus reveals Question 1 ("What is the capital of France?")
+        Then Priya's screen shows the question with an empty answer field below it
+        And the header reads "Round 1 — 1 of 8 questions revealed"
+
+      Scenario: Player types an answer and it persists
+        Given Q1 is visible on Priya's screen
+        When she types "Paris" into the Q1 answer field
+        Then "Paris" is saved to localStorage draft immediately
+        And the draft is sent to the server on blur
+
+  - id: S05
+    name: "Answer Form — Multiple Questions Revealed"
+    trigger: "Additional question_revealed events received during a round"
+    jtbd: [J3, J7]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: General Knowledge      |
+      |  ■■■ 3 of 8 questions revealed   |
+      +----------------------------------+
+      |  Q1  What is the capital         |
+      |      of France?                  |
+      |  +----------------------------+  |
+      |  | Paris                      |  |
+      |  +----------------------------+  |
+      |  Q2  Name the three primary      |
+      |      colors.                     |
+      |  +----------------------------+  |
+      |  | Red, Blue               ▼  |  |
+      |  +----------------------------+  |
+      |  [ + add part ]                  |
+      |  Q3  [ IMAGE: eiffel.jpg ]       |
+      |      Name this landmark.         |
+      |  +----------------------------+  |
+      |  |                            |  |
+      |  +----------------------------+  |
+      |  Q4–Q8 not yet revealed.         |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: revealed_questions
+        source: question_revealed events (accumulated)
+        consumers: [this screen, S08-review, S09-submit message]
+      - name: draft_answers
+        source: localStorage per question_index
+        consumers: [this screen, S08-review summary]
+      - name: question_type
+        source: question_revealed event (choices array → multiple_choice; media field → media)
+        consumers: [input widget selection]
+
+    messages_received:
+      - event: question_revealed
+        note: "Appends new question to list — existing answers preserved"
+      - event: round_ended
+        note: "Transitions to S08"
+
+    messages_sent:
+      - event: draft_answer
+        trigger: on blur / debounced 300ms
+        payload: {team_name, round_index, question_index, answer}
+
+    emotional_state:
+      entry: "Focused"
+      exit: "Focused (building towards review)"
+
+    integration_checkpoint: |
+      Existing answers MUST NOT be cleared when a new question is revealed.
+      multi-part answer widget uses expandable list, not a single text field.
+      Media displayed inline above question text; failures show fallback message.
+
+    failure_modes:
+      - "Image load failure: show 'Media unavailable — ask the quizmaster'"
+      - "Multi-part answers: user may try to enter all parts in one field — widget design prevents this"
+      - "question_revealed arrives for already-shown question (duplicate): idempotent render"
+
+    gherkin: |
+      Scenario: New question appears without clearing existing answers
+        Given Priya has typed "Paris" for Q1
+        When Marcus reveals Q2 ("Name the three primary colors")
+        Then "Paris" remains in the Q1 answer field
+        And a new Q2 answer field appears below it
+
+      Scenario: Multi-part answer question appears
+        Given Q2 requires multiple answer parts
+        When it is revealed on Priya's screen
+        Then an expandable list appears with one field and a "+ add part" button
+        And each part is stored separately in the draft
+
+      Scenario: Image question appears
+        Given Q3 has an image attachment (eiffel.jpg)
+        When it is revealed on Priya's screen
+        Then the image renders inline above the question text
+        And an answer field appears below the text
+
+      Scenario: Image fails to load
+        Given Q3 has an image attachment that cannot load
+        When the image block renders
+        Then it shows "Media unavailable — ask the quizmaster"
+        And the answer field remains available for text input
+
+  - id: S06
+    name: "Multiple Choice Question"
+    trigger: "question_revealed event where choices array is non-empty"
+    jtbd: [J7]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: General Knowledge      |
+      |  ■■■■ 4 of 8 questions revealed  |
+      +----------------------------------+
+      |  Q4  Which planet is closest     |
+      |      to the sun?                 |
+      |  (  ) Venus                      |
+      |  ( * ) Mercury                   |
+      |  (  ) Mars                       |
+      |  (  ) Earth                      |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: question.choices
+        source: question_revealed event
+        consumers: [radio button widget]
+      - name: draft_answers[round][q_index]
+        source: player selection → localStorage
+        consumers: [S08-review, submit_answers]
+
+    emotional_state:
+      entry: "Focused"
+      exit: "Focused (quick confident selection)"
+
+    gherkin: |
+      Scenario: Player selects a multiple choice answer
+        Given Q4 is revealed with choices: Venus, Mercury, Mars, Earth
+        When Priya taps "Mercury"
+        Then Mercury is visually selected (filled radio button)
+        And the selection is saved as the draft answer
+
+  - id: S07
+    name: "Media Question — Audio/Video"
+    trigger: "question_revealed event where media.type = audio or video"
+    jtbd: [J7]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: General Knowledge      |
+      +----------------------------------+
+      |  Q6  [ AUDIO: clip.mp3 ]         |
+      |      ▶ Play audio               |
+      |      Name the artist.            |
+      |  +----------------------------+  |
+      |  |                            |  |
+      |  +----------------------------+  |
+      +----------------------------------+
+
+    emotional_state:
+      entry: "Focused"
+      exit: "Focused (sensory engagement with media)"
+
+    failure_modes:
+      - "Audio/video fails to play: 'Media unavailable — ask the quizmaster'"
+      - "Autoplay blocked by browser: explicit Play button required"
+
+    gherkin: |
+      Scenario: Audio question renders with playback control
+        Given Q6 has an audio attachment (clip.mp3)
+        When it is revealed on Priya's screen
+        Then an audio player with a Play button appears above the question text
+        And the answer field is visible below
+
+  - id: S08
+    name: "End of Round — Review Screen"
+    trigger: "round_ended event received (or all questions revealed)"
+    jtbd: [J4]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: Submit Answers         |
+      +----------------------------------+
+      |  Review your answers:            |
+      |  Q1  Paris                       |
+      |  Q2  Red, Blue, Yellow           |
+      |  Q3  Eiffel Tower                |
+      |  Q4  Mercury                     |
+      |  Q5  (no answer)  ⚠             |
+      |  Q6  Michael Jackson             |
+      |  Q7  1969                        |
+      |  Q8  Brazil                      |
+      |  ⚠ Q5 has no answer.             |
+      |    You can still go back.        |
+      |  [ Go Back & Edit ]              |
+      |  [ Submit Answers ]              |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: draft_answers (all questions)
+        source: localStorage.trivia_draft_answers[round]
+        consumers: [review list display, submit_answers payload]
+      - name: revealed_questions
+        source: accumulated from question_revealed events
+        consumers: [review list structure]
+
+    emotional_state:
+      entry: "Focused"
+      exit: "Confident (review complete, ready to commit)"
+
+    integration_checkpoint: |
+      All answers shown in question order.
+      Any blank answer is flagged with ⚠ warning — does not block submission.
+      "Go Back & Edit" returns to S05 answer form with all fields editable.
+
+    failure_modes:
+      - "All answers blank: show warning 'You haven't answered any questions yet.' Submit still available."
+      - "round_ended arrives while player is composing an answer: auto-navigate to review screen, answer in progress is saved to localStorage"
+
+    gherkin: |
+      Scenario: Player reviews answers at end of round
+        Given Priya has answered Q1–Q8 (with Q5 left blank)
+        When Marcus ends the round
+        Then Priya's screen shows all 8 answers in the review list
+        And Q5 shows "(no answer) ⚠"
+        And a warning reads "Q5 has no answer. You can still go back."
+
+      Scenario: Player goes back to edit before submitting
+        Given Priya is on the review screen
+        When she taps "Go Back & Edit"
+        Then she returns to the answer form with all fields editable
+        And her existing answers are still present
+
+  - id: S09
+    name: "Submission Confirmation Dialog"
+    trigger: "Player taps 'Submit Answers' on the review screen"
+    jtbd: [J4]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Are you sure?                   |
+      |  You have 1 unanswered           |
+      |  question (Q5).                  |
+      |  Once submitted, you cannot      |
+      |  change your answers.            |
+      |  [ Go Back ]  [ Yes, Submit ]    |
+      +----------------------------------+
+
+    messages_sent:
+      - event: submit_answers
+        trigger: player taps "Yes, Submit"
+        payload: {team_id, round_index, answers: [{question_index, answer}...]}
+
+    messages_received:
+      - event: submission_ack
+        payload: {team_id, round_index, locked: true}
+        note: "Transitions to S10 post-submit waiting"
+
+    emotional_state:
+      entry: "Confident"
+      exit: "Confident (submission committed)"
+
+    integration_checkpoint: |
+      Dialog content varies: if 0 blank answers, omit the unanswered warning.
+      If submission_ack not received within 5s, show retry toast; do not double-submit.
+
+    failure_modes:
+      - "submission_ack timeout: show 'Submission may not have gone through — tap to retry'"
+      - "ALREADY_SUBMITTED response: treat as success, proceed to S10"
+
+    gherkin: |
+      Scenario: Player confirms submission
+        Given Priya is on the confirmation dialog
+        When she taps "Yes, Submit"
+        Then the server receives the submit_answers message
+        And Priya's screen transitions to "Round 1: Submitted!"
+        And all answer fields become read-only
+
+      Scenario: Player cancels submission from the dialog
+        Given Priya is on the confirmation dialog
+        When she taps "Go Back"
+        Then the dialog dismisses
+        And she returns to the review screen with all options available
+
+  - id: S10
+    name: "Post-Submit Waiting"
+    trigger: "submission_ack received with locked: true"
+    jtbd: [J5, J6]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: Submitted!             |
+      +----------------------------------+
+      |  Your answers are locked in.     |
+      |  Waiting for other teams...      |
+      |  Team Awesome      [submitted]   |
+      |  The Brainiacs     [submitted]   |
+      |  Quiz Killers      [waiting...]  |
+      |  The ceremony will begin soon.   |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: submission_status
+        source: submission_received events (broadcast to play room)
+        consumers: [this screen — live team status list]
+
+    messages_received:
+      - event: submission_received
+        payload: {team_id, team_name, round_index}
+        note: "Updates team status in real time"
+      - event: ceremony_question_shown
+        note: "Transitions to S11 ceremony"
+
+    emotional_state:
+      entry: "Confident"
+      exit: "Anticipation (watching last team submit)"
+
+    integration_checkpoint: |
+      All answer form fields must be read-only in this state.
+      submission_received events for other teams update the list without page reload.
+
+    gherkin: |
+      Scenario: Player sees other teams' submission status in real time
+        Given Team Awesome has submitted
+        When The Brainiacs submit
+        Then "The Brainiacs" status changes from "[waiting...]" to "[submitted]"
+        And Quiz Killers remains "[waiting...]"
+
+      Scenario: Player attempts to edit answers after submission
+        Given Team Awesome has submitted and Priya taps an answer field
+        Then the field does not become editable
+        And a subtle reminder reads "Answers are locked"
+
+  - id: S11
+    name: "Ceremony View"
+    trigger: "ceremony_question_shown event received"
+    jtbd: [J5]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: Ceremony               |
+      +----------------------------------+
+      |  Q3  Name this landmark.         |
+      |  Answer: Eiffel Tower            |
+      |  Team Awesome     ✓ got it       |
+      |  The Brainiacs    ✓ got it       |
+      |  Quiz Killers     ✗ missed it    |
+      |  Waiting for quizmaster to       |
+      |  reveal the next answer...       |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: ceremony_question
+        source: ceremony_question_shown event
+        consumers: [this screen — question text]
+      - name: ceremony_answer
+        source: ceremony_answer_revealed event
+        consumers: [this screen — answer text + team verdicts]
+      - name: team_verdicts
+        source: ceremony_answer_revealed event (includes scored verdicts)
+        consumers: [this screen — got it / missed it per team]
+
+    messages_received:
+      - event: ceremony_question_shown
+        payload: {question_index, question: {text, index}}
+      - event: ceremony_answer_revealed
+        payload: {question_index, answer}
+      - event: round_scores_published
+        note: "Transitions to S12 scores"
+
+    emotional_state:
+      entry: "Anticipation"
+      exit: "Elated (correct) or Resigned (incorrect) — both are satisfying social moments"
+
+    gherkin: |
+      Scenario: Ceremony answer is revealed on player's phone
+        Given Team Awesome has submitted and ceremony has started
+        When Marcus reveals the answer to Q3 ("Eiffel Tower")
+        Then Priya's screen shows "Answer: Eiffel Tower"
+        And Team Awesome shows "✓ got it"
+        And Quiz Killers shows "✗ missed it"
+
+      Scenario: Ceremony question shown before answer is revealed
+        Given Marcus has shown Q4 on the display
+        When the ceremony_question_shown event arrives
+        Then Priya's screen shows the Q4 text
+        And the answer line reads "Waiting for quizmaster to reveal..."
+
+  - id: S12
+    name: "Round Scores"
+    trigger: "round_scores_published event received"
+    jtbd: [J5]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  Round 1: Scores                 |
+      +----------------------------------+
+      |  Round 1 Results                 |
+      |  1. Team Awesome    6 pts  (+6)  |
+      |  2. The Brainiacs   5 pts  (+5)  |
+      |  3. Quiz Killers    3 pts  (+3)  |
+      |  Your team: Team Awesome  6 pts  |
+      |  Round 2 starts soon...          |
+      +----------------------------------+
+
+    shared_artifacts:
+      - name: round_scores
+        source: round_scores_published event
+        consumers: [this screen — ranked team list]
+      - name: team_name
+        source: localStorage.trivia_team_name
+        consumers: [this screen — "Your team" highlight]
+
+    messages_received:
+      - event: round_scores_published
+        payload: {round_index, scores: [{team_name, round_score, running_total}...]}
+      - event: round_started
+        note: "Next round begins — transition to S04"
+      - event: game_over
+        note: "Shows final scores variant of this screen"
+
+    emotional_state:
+      entry: "Elated or Motivated"
+      exit: "Ready for next round (or satisfied at game end)"
+
+    gherkin: |
+      Scenario: Round scores appear after ceremony
+        Given the ceremony for Round 1 is complete
+        When Marcus publishes scores
+        Then Priya's screen shows all teams ranked with their round and running totals
+        And Team Awesome is highlighted as "Your team"
+
+      Scenario: Final scores appear at game over
+        Given Round 4 ceremony is complete
+        When Marcus ends the game
+        Then Priya's screen shows the final leaderboard
+        And the winning team is visually highlighted
+
+  - id: S_CONNECTION
+    name: "Connection Status Banner (Overlay)"
+    trigger: "WsClient fires reconnect_failed or connection drops"
+    jtbd: [J6]
+
+    screen_mockup: |
+      +----------------------------------+
+      |  ⚠ Reconnecting...              |
+      +----------------------------------+
+      (overlaid on current screen content)
+
+    emotional_state:
+      entry: "Any"
+      exit: "Relieved (reconnected) or Informed (explicit retry needed)"
+
+    gherkin: |
+      Scenario: Connection drops during a round
+        Given Priya is entering answers for Round 1
+        When her WebSocket connection drops
+        Then a "Reconnecting..." banner overlays the screen
+        And the answer form remains visible behind it
+        When the connection restores
+        Then the banner disappears
+        And state_snapshot restores her to the correct screen state
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: team_id
+      must_match_across: [S01, S02, S09, S10]
+      failure_message: "team_id mismatch between registration and submission causes TEAM_NOT_FOUND"
+    - artifact: draft_answers
+      must_match_across: [S04, S05, S08, S09]
+      failure_message: "Draft answer loss between steps breaks the core promise of the answer form"
+    - artifact: revealed_questions
+      must_match_across: [S04, S05, S08]
+      failure_message: "Stale revealed_questions list causes review screen to show wrong question count"
+    - artifact: round_index
+      must_match_across: [S08, S09, S10]
+      failure_message: "Wrong round_index in submit_answers causes scoring to attribute answers to wrong round"
+
+changelog:
+  - date: "2026-04-15"
+    feature: "play-ui"
+    change: "Initial journey schema. Extends trivia DESIGN wave visual journey. Grounded in JTBD J1–J7."

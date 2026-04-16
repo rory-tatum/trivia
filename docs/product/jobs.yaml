@@ -1,0 +1,146 @@
+# SSOT Jobs Registry
+# Bootstrapped by: play-ui DISCUSS wave (2026-04-15)
+# Method: JTBD Job Story format (Situation → Motivation → Outcome)
+# Full analysis: docs/feature/play-ui/discuss/jtbd-job-stories.md
+# Four forces: docs/feature/play-ui/discuss/jtbd-four-forces.md
+# Opportunity scores: docs/feature/play-ui/discuss/jtbd-opportunity-scores.md
+
+jobs:
+
+  - id: J1
+    feature: play-ui
+    title: "Join the Game Quickly Without Friction"
+    job_story: |
+      When I arrive at the venue and someone shares the /play URL,
+      I want to create a team identity in seconds,
+      so I can be part of the game before it starts and not feel left out.
+    dimensions:
+      functional: "Enter team name and appear in lobby within 10 seconds"
+      emotional: "Feel immediately included and ready — no account creation friction"
+      social: "Be visibly present so others can see the team has joined"
+    opportunity_score: 19
+    user_stories: [US-01]
+    forces:
+      push: "Placeholder page with 'Status: connected' and no join UI"
+      pull: "Name entered + Join tapped = in the lobby within 30 seconds"
+      anxiety: "Name collision; game already started; need to create account"
+      habit: "Paper answer sheets are always available and obvious"
+
+  - id: J2
+    feature: play-ui
+    title: "Rejoin Seamlessly After a Disruption"
+    job_story: |
+      When my phone goes to sleep or I accidentally close the browser,
+      I want the game to recognise me and put me back where I was,
+      so I can keep contributing without disrupting my team.
+    dimensions:
+      functional: "Reconnect, restore team identity, recover draft answers"
+      emotional: "Feel relief — the worst failure mode does not happen"
+      social: "Not cause the team to miss questions because of my device issue"
+    opportunity_score: 17
+    user_stories: [US-02, US-04]
+    forces:
+      push: "No rejoin mechanism; page reload shows developer scaffold"
+      pull: "Auto-rejoin: 'Welcome back, Team Awesome!' within 2 seconds"
+      anxiety: "Wrong team recognised; draft answers not restored"
+      habit: "Paper never forgets what was written on it"
+
+  - id: J3
+    feature: play-ui
+    title: "Capture Answers Collaboratively in Real Time"
+    job_story: |
+      When the quizmaster reveals a question,
+      I want to see it immediately and type our team's answer,
+      so my team can discuss and update the response right up until the round ends.
+    dimensions:
+      functional: "See each question as it appears; enter/update any revealed question; answers persist"
+      emotional: "Feel engaged — the interface is the team's shared work surface"
+      social: "Be the answer-entry person for the group, empowered not stressed"
+    opportunity_score: 19
+    user_stories: [US-03, US-04]
+    forces:
+      push: "No answer form exists; scaffold shows only event name"
+      pull: "Growing answer form; all questions editable; drafts auto-saved"
+      anxiety: "Drafts lost when new question arrives; can't see Q1 after Q5 revealed"
+      habit: "Paper shows all questions at once once distributed"
+
+  - id: J4
+    feature: play-ui
+    title: "Submit Final Answers with Confidence"
+    job_story: |
+      When all questions in a round have been revealed,
+      I want to review our answers and commit when we are ready,
+      so I do not accidentally lock in wrong answers or miss a last-minute fix.
+    dimensions:
+      functional: "Review screen; blank answer warnings; confirmation dialog; locked state"
+      emotional: "Feel confident — submission is intentional, no accidental tap"
+      social: "Be the team member who handled the submission competently"
+    opportunity_score: 19
+    user_stories: [US-05, US-06]
+    forces:
+      push: "No review or submission UI; would submit blind"
+      pull: "Review list + confirmation dialog + 'Answers locked in' state"
+      anxiety: "Accidental submission; blank answer not noticed; can't edit after"
+      habit: "Paper submission = walking to quizmaster, deliberate and visible"
+
+  - id: J5
+    feature: play-ui
+    title: "Follow the Ceremony and Know How We Did"
+    job_story: |
+      When scoring is complete and the ceremony starts,
+      I want to watch the answers revealed on my phone and see our score,
+      so my team can react together and know where we stand.
+    dimensions:
+      functional: "Ceremony view per question; team verdicts; round scores"
+      emotional: "Feel the payoff — excitement, surprise, satisfaction"
+      social: "Share the collective experience; phone enhances the shared moment"
+    opportunity_score: 15
+    user_stories: [US-07, US-08, US-09]
+    forces:
+      push: "No ceremony or scores screen; players submit and see nothing"
+      pull: "Ceremony view with question + answer + team results; scores ranked"
+      anxiety: "Missed a ceremony question; final scores wrong"
+      habit: "Watch projected display at pub; phone mirrors that experience"
+
+  - id: J6
+    feature: play-ui
+    title: "Understand What Is Happening at All Times"
+    job_story: |
+      When something unexpected happens — connection drops, error, game state changes —
+      I want a clear indication of what is happening and what I should do,
+      so I never feel lost or think I might have broken something.
+    dimensions:
+      functional: "Connection status; game phase; plain-English error messages"
+      emotional: "Feel supported, not confused or anxious"
+      social: "Not be seen as the person who 'broke it'"
+    opportunity_score: 15
+    user_stories: [US-10]
+    forces:
+      push: "Binary 'connected/disconnected' text; no context"
+      pull: "Reconnecting banner; game phase indicator; readable error messages"
+      anxiety: "App frozen vs. just waiting? Did submit go through?"
+      habit: "Paper has no equivalent ambiguity — it either exists or it doesn't"
+
+  - id: J7
+    feature: play-ui
+    title: "Answer Different Question Types Naturally"
+    job_story: |
+      When a multiple-choice, multi-part, or media question is revealed,
+      I want an input method that matches the question type,
+      so I can focus on the answer rather than fighting the interface.
+    dimensions:
+      functional: "Radio buttons for MC; expandable list for multi-part; inline media"
+      emotional: "Feel that the app 'gets it' and removes friction"
+      social: "Not be slowed down or embarrassed by the wrong input type"
+    opportunity_score: 13
+    user_stories: [US-11, US-12, US-13]
+    forces:
+      push: "Single text field for all question types — wrong mental model"
+      pull: "Each question type renders its natural input widget"
+      anxiety: "Image doesn't load; audio won't play on my phone"
+      habit: "Paper uses numbered blanks for multi-part; radio circles for MC"
+
+changelog:
+  - date: "2026-04-15"
+    feature: "play-ui"
+    change: "Initial SSOT jobs registry. 7 jobs (J1-J7) from play-ui DISCUSS wave JTBD analysis."

@@ -1,0 +1,169 @@
+schema_version: 1
+
+# SSOT Journey: Player Interface (/play)
+# Bootstrapped by: play-ui DISCUSS wave (2026-04-15)
+# Feature reference: docs/feature/play-ui/discuss/journey-play.yaml (full delta with Gherkin)
+# Extends: docs/ux/trivia/journey-play-visual.md (original trivia DESIGN wave)
+
+journey:
+  name: "Player — Trivia Game (/play)"
+  goal: "Join a trivia game, answer questions collaboratively, submit at round end, and follow the ceremony"
+  route: "/play"
+  platform: "web (mobile-first, React 18)"
+
+  personas:
+    - id: priya_nair
+      role: "Team captain — enters answers on behalf of team"
+      device: "Android / Chrome"
+      emotional_start: "Anxious (responsible for team score)"
+    - id: jordan_kim
+      role: "Casual member — participates, occasionally rejoins"
+      device: "iPhone / Safari"
+      emotional_start: "Relaxed (social, low-stakes)"
+
+  emotional_arc:
+    start: "Uncertain (new URL, social pressure)"
+    early: "Relieved (team identity confirmed)"
+    middle: "Engaged → Focused (questions + answers)"
+    late: "Confident (review + submission)"
+    end: "Elated (ceremony + scores)"
+
+  screens:
+    - id: S01
+      name: "Join — First Visit"
+      trigger: "No stored team identity"
+      jtbd: [J1]
+    - id: S02
+      name: "Auto-Rejoin"
+      trigger: "Valid team_id + device_token in localStorage"
+      jtbd: [J2]
+    - id: S03
+      name: "Lobby"
+      trigger: "game_state = LOBBY after join or rejoin"
+      jtbd: [J1, J6]
+    - id: S04
+      name: "Round Active — First Question"
+      trigger: "round_started event"
+      jtbd: [J3, J6]
+    - id: S05
+      name: "Answer Form — Multiple Questions"
+      trigger: "question_revealed events (accumulating)"
+      jtbd: [J3, J7]
+    - id: S06
+      name: "Multiple Choice Question"
+      trigger: "question_revealed with non-empty choices array"
+      jtbd: [J7]
+    - id: S07
+      name: "Media Question"
+      trigger: "question_revealed with media field"
+      jtbd: [J7]
+    - id: S08
+      name: "End-of-Round Review"
+      trigger: "round_ended event"
+      jtbd: [J4]
+    - id: S09
+      name: "Submission Confirmation Dialog"
+      trigger: "Player taps Submit Answers"
+      jtbd: [J4]
+    - id: S10
+      name: "Post-Submit Waiting"
+      trigger: "submission_ack with locked: true"
+      jtbd: [J5, J6]
+    - id: S11
+      name: "Ceremony View"
+      trigger: "ceremony_question_shown event"
+      jtbd: [J5]
+    - id: S12
+      name: "Round Scores"
+      trigger: "round_scores_published event"
+      jtbd: [J5]
+    - id: S_CONNECTION
+      name: "Connection Status Banner (Overlay)"
+      trigger: "WsClient connection drop"
+      jtbd: [J6]
+
+  websocket:
+    room: "play"
+    url: "/ws?room=play"
+
+    messages_sent:
+      - event: team_register
+        screens: [S01]
+      - event: team_rejoin
+        screens: [S02]
+      - event: draft_answer
+        screens: [S04, S05, S06, S07]
+        trigger: "on blur / debounced 300ms"
+      - event: submit_answers
+        screens: [S09]
+
+    messages_received:
+      - event: team_registered
+        action: "store team_id, device_token in localStorage; transition to S03"
+      - event: state_snapshot
+        action: "route to correct screen based on game_state"
+      - event: team_joined
+        action: "update lobby teams list"
+      - event: round_started
+        action: "transition to S04"
+      - event: question_revealed
+        action: "append to revealedQuestions; render in answer form"
+      - event: round_ended
+        action: "transition to S08"
+      - event: submission_ack
+        action: "set read-only mode; transition to S10"
+      - event: submission_received
+        action: "update team submission status on S10"
+      - event: ceremony_question_shown
+        action: "transition to S11; show question"
+      - event: ceremony_answer_revealed
+        action: "add answer + verdicts to S11"
+      - event: round_scores_published
+        action: "transition to S12"
+      - event: game_over
+        action: "show final scores variant of S12"
+      - event: error
+        action: "show inline error (DUPLICATE_TEAM_NAME on S01; TEAM_NOT_FOUND on S02; others as transient banner)"
+
+  shared_artifacts:
+    - name: team_id
+      source: "team_registered event → localStorage.trivia_team_id"
+      integration_risk: HIGH
+    - name: device_token
+      source: "team_registered event → localStorage.trivia_device_token"
+      integration_risk: HIGH
+    - name: team_name
+      source: "player input → localStorage.trivia_team_name"
+      integration_risk: MEDIUM
+    - name: draft_answers
+      source: "localStorage.trivia_draft_answers (canonical)"
+      integration_risk: CRITICAL
+    - name: revealed_questions
+      source: "question_revealed events (accumulated array in React state)"
+      integration_risk: HIGH
+    - name: game_state
+      source: "state_snapshot.game_state on connect/reconnect"
+      integration_risk: HIGH
+
+  open_dependencies:
+    - id: DEP-01
+      description: "QuestionPublic schema extension: add is_multi_part and media fields"
+      needed_by: [US-12, US-13]
+      owner: "DESIGN wave (solution-architect)"
+    - id: DEP-02
+      description: "ceremony_answer_revealed broadcast to play room (currently display only)"
+      needed_by: [US-08]
+      owner: "DESIGN wave"
+    - id: DEP-03
+      description: "submission_received broadcast to play room confirmation"
+      needed_by: [US-07]
+      owner: "DESIGN wave"
+    - id: DEP-04
+      description: "round_scores_published team name resolution"
+      needed_by: [US-09]
+      owner: "DESIGN wave"
+
+changelog:
+  - date: "2026-04-15"
+    feature: "play-ui"
+    change: "Initial SSOT journey schema. Bootstrapped from play-ui DISCUSS wave. Extends trivia DESIGN wave journey."
