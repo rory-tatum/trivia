@@ -183,7 +183,7 @@ Feature: Play UI — Player Interface
   # US-05: End-of-Round Review
   # ============================================================================
 
-  @skip @driving_port @real-io @US-05
+  @driving_port @real-io @US-05
   Scenario: Play room is notified when the quizmaster ends the round
     Given a quiz file "review-quiz.yaml" with 1 round of 3 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -198,7 +198,7 @@ Feature: Play UI — Player Interface
   # US-06: Submission Confirmation and Locking
   # ============================================================================
 
-  @skip @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Team submits answers and receives a locked confirmation
     Given a quiz file "submit-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -207,7 +207,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives confirmation that their answers are locked in
     And the confirmation shows the answers are locked for Round 1
 
-  @skip @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Team submitting a second time receives an already-submitted response
     Given a quiz file "double-submit.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -216,14 +216,14 @@ Feature: Play UI — Player Interface
     When "Team Awesome" submits their Round 1 answers again
     Then "Team Awesome" receives an already-submitted error
 
-  @skip @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Submission is rejected when the round has not yet started
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And "Team Awesome" is registered in the play room
     When "Team Awesome" attempts to submit answers for Round 1 before the round starts
     Then "Team Awesome" receives an error response
 
-  @skip @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Team can submit with all answers blank
     Given a quiz file "blank-submit.yaml" with 1 round of 3 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -434,7 +434,7 @@ Feature: Play UI — Player Interface
     Then the player receives an error response
     And no team identity is issued
 
-  @skip @infrastructure-failure @in-memory @US-06
+  @infrastructure-failure @in-memory @US-06
   Scenario: Submit rejected when the team identifier is unknown
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When a player attempts to submit answers using an unknown team identifier

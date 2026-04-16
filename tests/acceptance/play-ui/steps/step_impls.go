@@ -209,11 +209,39 @@ func (w *World) givenRoundStartedAndQuestionsRevealed(roundIndex, questionCount 
 }
 
 func (w *World) givenRoundEndedWithTeam(roundIndex int, teamName string) error {
-	return godog.ErrPending
+	// Start the round with the team registered, then end it.
+	if err := w.givenRoundStartedWithTeam(roundIndex, teamName); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostEndRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	// Wait for the team to receive round_ended confirmation.
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventRoundEnded, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_ended in givenRoundEndedWithTeam", teamName)
+	}
+	return nil
 }
 
 func (w *World) givenRoundEnded(roundIndex int) error {
-	return godog.ErrPending
+	// Load the first registered quiz fixture if not already loaded.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	time.Sleep(20 * time.Millisecond)
+	return hd.HostEndRound(w.ctx, roundIndex)
 }
 
 func (w *World) givenQuizmasterRevealedQuestion(roundIndex, questionIndex int) error {
@@ -225,7 +253,22 @@ func (w *World) givenQuizmasterRevealedQuestion(roundIndex, questionIndex int) e
 }
 
 func (w *World) givenAllQuestionsRevealed(count int) error {
-	return godog.ErrPending
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	roundIndex := w.currentRoundIndex
+	if roundIndex < 0 {
+		roundIndex = 0
+	}
+	for i := 0; i < count; i++ {
+		if err := hd.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
+			return fmt.Errorf("reveal question %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	w.revealedCount = count
+	return nil
 }
 
 func (w *World) givenTeamAlreadyRegistered(teamName string) error {
@@ -280,7 +323,24 @@ func (w *World) givenTeamSavedDraft(teamName string, roundIndex, questionIndex i
 }
 
 func (w *World) givenTeamSubmitted(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	// The team must be registered and the round must be ended before they can submit.
+	// Precondition: givenRoundEndedWithTeam has already been called.
+	d := w.ensurePlayDriver(teamName)
+	answers := make([]map[string]interface{}, w.totalQuestions)
+	for i := 0; i < w.totalQuestions; i++ {
+		answers[i] = map[string]interface{}{
+			"question_index": i,
+			"answer":         "",
+		}
+	}
+	if err := d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers); err != nil {
+		return err
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventSubmissionAck, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive submission_ack in givenTeamSubmitted", teamName)
+	}
+	return nil
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyStarted(teamName string, roundIndex int) error {
@@ -444,15 +504,54 @@ func (w *World) whenTeamSubmitsAnswers(teamName string, roundIndex int) error {
 }
 
 func (w *World) whenTeamSubmitsBlankAnswers(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	d := w.ensurePlayDriver(teamName)
+	// Build answers with empty string values.
+	count := w.totalQuestions
+	if count == 0 {
+		count = defaultQuestionCount
+	}
+	answers := make([]map[string]interface{}, count)
+	for i := 0; i < count; i++ {
+		answers[i] = map[string]interface{}{
+			"question_index": i,
+			"answer":         "",
+		}
+	}
+	return d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers)
 }
 
 func (w *World) whenTeamAttemptsSubmitBeforeRound(teamName string, roundIndex int) error {
-	return godog.ErrPending
+	d := w.ensurePlayDriver(teamName)
+	answers := []map[string]interface{}{
+		{"question_index": 0, "answer": "some answer"},
+	}
+	return d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers)
 }
 
 func (w *World) whenPlayerAttemptsSubmitWithUnknownID() error {
-	return godog.ErrPending
+	// Use a fresh anonymous connection with a fake team_id.
+	// Reuse the "play:anonymous" key so thenAnonymousPlayerReceivesError can find the event.
+	if w.server == nil {
+		return fmt.Errorf("server not started")
+	}
+	const anonKey = "play:anonymous"
+	conn, err := dialPlay(w.ctx, w.server)
+	if err != nil {
+		return fmt.Errorf("unknown team connect: %w", err)
+	}
+	anonDriver := NewPlayUIDriver(w.server, w.hostToken, w)
+	anonDriver.wsConns[anonKey] = conn
+	go anonDriver.readLoop(w.ctx, anonKey, conn)
+	w.connections[anonKey] = &WSConnection{
+		Role:      rolePlay,
+		Name:      "anonymous",
+		Connected: true,
+		driver:    anonDriver,
+	}
+	return anonDriver.PlaySubmitAnswersWithID(w.ctx, "anonymous",
+		"00000000-0000-0000-0000-000000000000", 0,
+		[]map[string]interface{}{{"question_index": 0, "answer": "x"}},
+	)
 }
 
 func (w *World) whenQuizmasterStartsRound(roundIndex int) error {
@@ -676,7 +775,18 @@ func (w *World) thenTeamReceivesRoundEnded(teamName string) error {
 }
 
 func (w *World) thenRoundEndedHasRoundNumber() error {
-	return godog.ErrPending
+	// Observable: any play connection has received a round_ended event with a round_index field.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event == eventRoundEnded {
+				if _, ok := msg.Payload["round_index"]; ok {
+					return nil
+				}
+				return fmt.Errorf("round_ended payload missing round_index field: %v", msg.Payload)
+			}
+		}
+	}
+	return fmt.Errorf("no round_ended event found on any connection")
 }
 
 func (w *World) thenTeamReceivesSubmissionAck(teamName string) error {
@@ -690,7 +800,23 @@ func (w *World) thenTeamReceivesSubmissionAck(teamName string) error {
 }
 
 func (w *World) thenSubmissionAckShowsLocked(roundIndex int) error {
-	return godog.ErrPending
+	// Observable: submission_ack payload has locked:true and matching round_index.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event == eventSubmissionAck {
+				locked, _ := msg.Payload["locked"].(bool)
+				if !locked {
+					return fmt.Errorf("submission_ack locked field is not true: %v", msg.Payload)
+				}
+				ri, _ := msg.Payload["round_index"].(float64)
+				if int(ri) != roundIndex {
+					return fmt.Errorf("submission_ack round_index: expected %d, got %d", roundIndex, int(ri))
+				}
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no submission_ack event found")
 }
 
 func (w *World) thenPlayRoomReceivesSubmissionNotification(teamName string) error {
@@ -971,11 +1097,41 @@ func (w *World) thenNoStateSnapshotSent() error {
 }
 
 func (w *World) thenTeamReceivesAlreadySubmittedError(teamName string) error {
-	return godog.ErrPending
+	// Observable: play connection received an error event with code "already_submitted".
+	key := connectionKey(rolePlay, teamName)
+	timeout := time.After(eventWaitTimeout)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			for _, msg := range w.messagesFor(key) {
+				if msg.Event == eventError {
+					code, _ := msg.Payload["code"].(string)
+					return fmt.Errorf("team %q received error but code was %q (expected already_submitted): %v", teamName, code, msg.Payload)
+				}
+			}
+			return fmt.Errorf("team %q did not receive an error event", teamName)
+		case <-ticker.C:
+			for _, msg := range w.messagesFor(key) {
+				if msg.Event == eventError {
+					code, _ := msg.Payload["code"].(string)
+					if code == "already_submitted" {
+						return nil
+					}
+				}
+			}
+		}
+	}
 }
 
 func (w *World) thenTeamReceivesErrorResponse(teamName string) error {
-	return godog.ErrPending
+	// Observable: play connection received any error event.
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventError, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive an error event", teamName)
+	}
+	return nil
 }
 
 func (w *World) thenAnonymousPlayerReceivesError() error {

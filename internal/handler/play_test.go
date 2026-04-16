@@ -119,11 +119,11 @@ func TestPlayHandler_TeamRegister_DuplicateName_ReturnsError(t *testing.T) {
 }
 
 func TestPlayHandler_SubmitAnswers_ReturnsSubmissionAck(t *testing.T) {
-	srv, _, _ := startPlayServer(t)
+	srv, _, session := startPlayServer(t)
 	conn := dialPlay(t, srv)
 	skipStateSnapshot(t, conn)
 
-	// Register a team first to get a team_id
+	// Register a team first to get a team_id.
 	sendMsg(t, conn, map[string]interface{}{
 		"event":   "team_register",
 		"payload": map[string]interface{}{"team_name": "Team Gamma"},
@@ -131,6 +131,14 @@ func TestPlayHandler_SubmitAnswers_ReturnsSubmissionAck(t *testing.T) {
 	regMsg := readEvent(t, conn, 2*time.Second)
 	payload, _ := regMsg["payload"].(map[string]interface{})
 	teamID, _ := payload["team_id"].(string)
+
+	// Start and end the round so submission is accepted.
+	if err := session.StartRound(0); err != nil {
+		t.Fatalf("start round: %v", err)
+	}
+	if err := session.ForceEndRound(0); err != nil {
+		t.Fatalf("end round: %v", err)
+	}
 
 	sendMsg(t, conn, map[string]interface{}{
 		"event": "submit_answers",

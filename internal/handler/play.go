@@ -213,7 +213,11 @@ func (ph *PlayHandler) handleSubmitAnswers(_ context.Context, conn *websocket.Co
 	}
 
 	if err := ph.session.SubmitAnswers(payload.TeamID, payload.RoundIndex, submissions); err != nil {
-		_ = ph.h.Send(client, hub.NewErrorEvent("submit_failed", err.Error()))
+		code := "submit_failed"
+		if err.Error() == "already_submitted" {
+			code = "already_submitted"
+		}
+		_ = ph.h.Send(client, hub.NewErrorEvent(code, err.Error()))
 		return
 	}
 
