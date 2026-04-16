@@ -357,12 +357,22 @@ func (w *World) givenTeamSubmitted(teamName string, roundIndex int) error {
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyStarted(teamName string, roundIndex int) error {
-	// Set up: register team, end round, team submits. Ceremony transition is done
-	// by the When step (whenQuizmasterShowsCeremonyQuestion calls HostBeginScoring).
+	// Set up: register team, end round, team submits, begin scoring to transition to SCORING state.
 	if err := w.givenRoundEndedWithTeam(roundIndex, teamName); err != nil {
 		return err
 	}
-	return w.givenTeamSubmitted(teamName, roundIndex)
+	if err := w.givenTeamSubmitted(teamName, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("begin scoring: %w", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	return nil
 }
 
 func (w *World) givenTeamSubmittedAndCeremonyAtQuestion(teamName string, roundIndex, questionIndex int) error {
@@ -1043,11 +1053,23 @@ func (w *World) thenEachVerdictHasResult() error {
 }
 
 func (w *World) thenTeamHasReceivedCeremonyQuestionCount(teamName string, count int) error {
-	return godog.ErrPending
+	// Observable: play connection for teamName has received exactly count ceremony_question_shown events.
+	key := connectionKey(rolePlay, teamName)
+	if !w.waitForEventCount(key, eventCeremonyQuestionShown, count, eventWaitTimeout) {
+		got := w.countEvents(key, eventCeremonyQuestionShown)
+		return fmt.Errorf("team %q expected %d ceremony_question_shown events, got %d", teamName, count, got)
+	}
+	return nil
 }
 
 func (w *World) thenTeamHasReceivedAnswerRevealCount(teamName string, count int) error {
-	return godog.ErrPending
+	// Observable: play connection for teamName has received exactly count ceremony_answer_revealed events.
+	key := connectionKey(rolePlay, teamName)
+	if !w.waitForEventCount(key, eventCeremonyAnswerReveal, count, eventWaitTimeout) {
+		got := w.countEvents(key, eventCeremonyAnswerReveal)
+		return fmt.Errorf("team %q expected %d ceremony_answer_revealed events, got %d", teamName, count, got)
+	}
+	return nil
 }
 
 func (w *World) thenTeamReceivesRoundScores(teamName string) error {

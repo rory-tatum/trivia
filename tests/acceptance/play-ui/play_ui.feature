@@ -281,7 +281,7 @@ Feature: Play UI — Player Interface
     And the verdicts include a result for "Team Awesome"
     And each verdict shows whether the team answered correctly or not
 
-  @skip @driving_port @real-io @US-08
+  @driving_port @real-io @US-08
   Scenario: Play room receives ceremony events for each question in sequence
     Given a quiz file "seq-ceremony.yaml" with 1 round of 3 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
