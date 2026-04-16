@@ -353,8 +353,8 @@ Feature: Host UI — Quizmaster Panel
     And rank indicators (1st, 2nd, etc.) are displayed next to each team
     And game control buttons are no longer visible
 
-  # @skip @driving_port @real-io @US-06
-  @skip @driving_port @real-io @US-06
+  # @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: Final leaderboard with tied teams shows both at the same rank position
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "tie-game.yaml" with 1 round of 2 text questions

@@ -336,6 +336,12 @@ func (w *World) runCeremony(questionCount int) error {
 }
 
 func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
+	// Ensure a display connection exists so runCeremony can receive ceremony_question_shown.
+	if w.connections[roleDisplay] == nil {
+		if err := w.givenDisplayConnected(); err != nil {
+			return fmt.Errorf("givenRoundPlayedWithEqualScores: connecting display: %w", err)
+		}
+	}
 	if err := w.givenRoundEnded(roundIndex, 2); err != nil {
 		return err
 	}
@@ -343,10 +349,19 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 		return err
 	}
 	// Mark one answer correct per team (equal scores).
-	for _, teamID := range w.teamIDs {
+	for teamName, teamID := range w.teamIDs {
 		if err := w.hostDriver().HostMarkAnswer(w.ctx, teamID, roundIndex, 0, "correct"); err != nil {
 			return err
 		}
+		// Wait for score_updated to confirm each mark was accepted.
+		if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
+			return fmt.Errorf("score_updated not received after marking %s answer", teamName)
+		}
+	}
+	// State machine requires SCORING → CEREMONY → ROUND_SCORES.
+	// Run ceremony (show+reveal each question) before publishing scores.
+	if err := w.runCeremony(2); err != nil {
+		return fmt.Errorf("running ceremony before publish: %w", err)
 	}
 	return w.hostDriver().HostPublishScores(w.ctx, roundIndex)
 }
@@ -1356,7 +1371,58 @@ func (w *World) thenRankIndicatorsDisplayed() error {
 }
 
 func (w *World) thenTeamsAtSameRank(t1, t2 string) error {
-	return godog.ErrPending
+	// Observable: both teams have the same score in the game_over final_scores payload,
+	// which means they share the same rank position (e.g., both are 1st).
+	finalScores, err := w.waitForGameOverScores()
+	if err != nil {
+		return err
+	}
+
+	// Resolve both team names to their server-assigned IDs.
+	id1 := w.teamID(t1)
+	id2 := w.teamID(t2)
+
+	score1, found1 := w.scoreForTeam(finalScores, id1, t1)
+	if !found1 {
+		return fmt.Errorf("team %q (id=%q) not found in final_scores: %v", t1, id1, finalScores)
+	}
+	score2, found2 := w.scoreForTeam(finalScores, id2, t2)
+	if !found2 {
+		return fmt.Errorf("team %q (id=%q) not found in final_scores: %v", t2, id2, finalScores)
+	}
+
+	if score1 != score2 {
+		return fmt.Errorf(
+			"teams %q and %q do not share the same rank: %q has score %v, %q has score %v",
+			t1, t2, t1, score1, t2, score2,
+		)
+	}
+	return nil
+}
+
+// scoreForTeam looks up a team score in finalScores by server ID or name fallback.
+// Returns (score, true) if found, (0, false) otherwise.
+func (w *World) scoreForTeam(finalScores map[string]interface{}, teamID, teamName string) (float64, bool) {
+	if raw, ok := finalScores[teamID]; ok {
+		score, _ := toFloat64(raw)
+		return score, true
+	}
+	if raw, ok := finalScores[teamName]; ok {
+		score, _ := toFloat64(raw)
+		return score, true
+	}
+	return 0, false
+}
+
+// toFloat64 converts a JSON-decoded numeric value (float64 or int) to float64.
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	}
+	return 0, false
 }
 
 func (w *World) thenGameControlsRemoved() error {
