@@ -428,8 +428,8 @@ Feature: Host UI — Quizmaster Panel
   # At least one scenario per driven adapter exercising real I/O
   # ============================================================================
 
-  # @skip @real-io @adapter-integration @US-02
-  @skip @real-io @adapter-integration @US-02
+  # @real-io @adapter-integration @US-02
+  @real-io @adapter-integration @US-02
   Scenario: Quiz loader reads a real YAML file from disk and confirms the content
     Given a quiz file "real-io-quiz.yaml" with 2 rounds of 3 text questions each
     And the server is running with HOST_TOKEN "pub-night-secret"
