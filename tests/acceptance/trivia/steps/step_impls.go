@@ -453,14 +453,8 @@ func (w *World) whenFullGameSequenceRuns() error {
 }
 
 func (w *World) whenDockerBuildRuns() error {
-	cmd := exec.CommandContext(w.ctx, "docker", "build", "-t", "trivia:acceptance-test", ".")
-	cmd.Dir = "../../../../" // project root: Dockerfile lives at the repo root
-	out, err := cmd.CombinedOutput()
-	w.quizFixtures["docker_build_output"] = string(out)
-	if err != nil {
-		return fmt.Errorf("docker build failed: %w\n%s", err, string(out))
-	}
-	return nil
+	return w.runInfraCommand(w.ctx, "../../../../", "docker_build_output", "docker build failed",
+		"docker", "build", "-t", "trivia:acceptance-test", ".")
 }
 
 func (w *World) whenDockerComposeUp() error {
@@ -468,14 +462,10 @@ func (w *World) whenDockerComposeUp() error {
 }
 
 func (w *World) whenGoArchLintRuns() error {
-	projectRoot := "../../../../"
-	cmd := exec.CommandContext(w.ctx, "go", "run", "github.com/fe3dback/go-arch-lint@latest", "check", "--project-path", projectRoot)
-	out, err := cmd.CombinedOutput()
-	w.quizFixtures["arch_lint_output"] = string(out)
-	if err != nil {
-		return fmt.Errorf("go-arch-lint failed: %w\n%s", err, string(out))
-	}
-	return nil
+	// go-arch-lint accepts --project-path rather than relying on cmd.Dir,
+	// so the working directory is left at its default (this package's dir).
+	return w.runInfraCommand(w.ctx, "", "arch_lint_output", "go-arch-lint failed",
+		"go", "run", "github.com/fe3dback/go-arch-lint@latest", "check", "--project-path", "../../../../")
 }
 
 func (w *World) whenTypeScriptTypeCheck() error {
@@ -490,16 +480,12 @@ func (w *World) whenTypeScriptTypeCheck() error {
 }
 
 func (w *World) whenGoTestWithRace() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	// Use a dedicated context with a 3-minute wall-clock limit rather than
+	// the scenario context, which may carry a shorter deadline.
+	raceCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "test", "./internal/...", "./cmd/...", "-race", "-count=1", "-timeout=2m")
-	cmd.Dir = "../../../../"
-	out, err := cmd.CombinedOutput()
-	w.quizFixtures["go_test_output"] = string(out)
-	if err != nil {
-		return fmt.Errorf("go test failed: %w\n%s", err, string(out))
-	}
-	return nil
+	return w.runInfraCommand(raceCtx, "../../../../", "go_test_output", "go test failed",
+		"go", "test", "./internal/...", "./cmd/...", "-race", "-count=1", "-timeout=2m")
 }
 
 // -----------------------------------------------------------------------
@@ -2036,6 +2022,22 @@ func (w *World) givenAllRoundsComplete() error {
 // -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------
+
+// runInfraCommand executes an external command, stores its combined output under
+// outputKey in w.quizFixtures, and returns a wrapped error on failure.
+// If dir is non-empty it sets cmd.Dir; otherwise the working directory is inherited.
+func (w *World) runInfraCommand(ctx context.Context, dir, outputKey, failLabel string, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	w.quizFixtures[outputKey] = string(out)
+	if err != nil {
+		return fmt.Errorf("%s: %w\n%s", failLabel, err, string(out))
+	}
+	return nil
+}
 
 func (w *World) hostDriver() *TriviaDriver {
 	conn := w.connections["host"]
