@@ -110,7 +110,6 @@ Feature: Infrastructure -- deployment and CI/CD validation
   # Multi-stage build: node -> golang -> distroless
   # -----------------------------------------------------------------------
 
-  @skip
   @infrastructure
   Scenario: The Docker image builds without errors
     Given the project source code is present

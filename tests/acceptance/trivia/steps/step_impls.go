@@ -453,6 +453,7 @@ func (w *World) whenFullGameSequenceRuns() error {
 
 func (w *World) whenDockerBuildRuns() error {
 	cmd := exec.CommandContext(w.ctx, "docker", "build", "-t", "trivia:acceptance-test", ".")
+	cmd.Dir = "../../../../" // project root: Dockerfile lives at the repo root
 	out, err := cmd.CombinedOutput()
 	w.quizFixtures["docker_build_output"] = string(out)
 	if err != nil {
