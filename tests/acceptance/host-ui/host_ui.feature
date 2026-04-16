@@ -322,8 +322,8 @@ Feature: Host UI — Quizmaster Panel
     Then the display screen receives the answer for question 1
     And the play screen for "The Brainiacs" does not receive the answer
 
-  # @skip @driving_port @real-io @US-05
-  @skip @driving_port @real-io @US-05
+  # @driving_port @real-io @US-05
+  @driving_port @real-io @US-05
   Scenario: All questions walked through — ceremony complete shown and next controls available
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "ceremony-test.yaml" with 1 round of 2 text questions

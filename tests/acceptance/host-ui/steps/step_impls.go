@@ -296,12 +296,21 @@ func (w *World) givenRoundFullyComplete(roundIndex int) error {
 }
 
 // runCeremony walks through show-question / reveal-answer for each question in order.
+// It waits for the display to acknowledge each ceremony_question_shown event and
+// increments ceremonyQuestionsShown so that thenCeremonyProgressShows reflects
+// the completed state.
 func (w *World) runCeremony(questionCount int) error {
 	driver := w.hostDriver()
 	for i := 0; i < questionCount; i++ {
 		if err := driver.HostCeremonyShowQuestion(w.ctx, i); err != nil {
 			return err
 		}
+		if _, ok := w.waitForEvent(roleDisplay, eventCeremonyQuestionShown, eventWaitTimeout); !ok {
+			return fmt.Errorf("runCeremony: display did not receive ceremony_question_shown for question %d", i)
+		}
+		w.mu.Lock()
+		w.ceremonyQuestionsShown++
+		w.mu.Unlock()
 		if err := driver.HostCeremonyRevealAnswer(w.ctx, i); err != nil {
 			return err
 		}
@@ -364,7 +373,12 @@ func (w *World) givenCeremonyComplete(roundIndex, questionCount int) error {
 	if err := w.givenMarcusOnCeremonyPanel(roundIndex); err != nil {
 		return err
 	}
-	return w.runCeremony(questionCount)
+	if err := w.runCeremony(questionCount); err != nil {
+		return err
+	}
+	// Publish scores after ceremony so the server emits round_scores_published,
+	// making "End Game" (and "Start Next Round" for multi-round quizzes) available.
+	return w.hostDriver().HostPublishScores(w.ctx, roundIndex)
 }
 
 // waitForScoringData blocks until the scoring_data event arrives on the host connection.
@@ -687,6 +701,18 @@ func (w *World) thenMessageVisible(msg string) error {
 	if w.lastError != "" {
 		return nil // other error path — message visible through error state
 	}
+	// "Ceremony complete" is a client-side derived message shown when all questions
+	// have been shown (ceremonyQuestionsShown == totalQuestions and both > 0).
+	if msg == "Ceremony complete" {
+		w.mu.Lock()
+		shown := w.ceremonyQuestionsShown
+		total := w.totalQuestions
+		w.mu.Unlock()
+		if total > 0 && shown >= total {
+			return nil
+		}
+		return fmt.Errorf("expected %q message but ceremony is incomplete: %d of %d questions shown", msg, shown, total)
+	}
 	// Check for game_over or other terminal events that carry visible messages.
 	return godog.ErrPending
 }
@@ -895,6 +921,16 @@ func (w *World) thenButtonNotVisible(label string) error {
 	switch label {
 	case "Reveal Next Question":
 		return w.thenRevealButtonNotVisible()
+	case "Show Next Question":
+		// "Show Next Question" is no longer visible when all ceremony questions have been shown.
+		w.mu.Lock()
+		shown := w.ceremonyQuestionsShown
+		total := w.totalQuestions
+		w.mu.Unlock()
+		if total > 0 && shown >= total {
+			return nil
+		}
+		return fmt.Errorf("%q button still visible: only %d of %d ceremony questions shown", label, shown, total)
 	default:
 		return fmt.Errorf("thenButtonNotVisible: unrecognised button label %q — add a case for it", label)
 	}
