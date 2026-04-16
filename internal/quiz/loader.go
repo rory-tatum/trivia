@@ -40,6 +40,15 @@ func (l *Loader) LoadFromPath(path string) (game.QuizFull, error) {
 	return mapToQuizFull(raw), nil
 }
 
+// mapMedia converts a yamlMedia pointer to a game.MediaRef pointer.
+// Returns nil if the input is nil.
+func mapMedia(m *yamlMedia) *game.MediaRef {
+	if m == nil {
+		return nil
+	}
+	return &game.MediaRef{Type: m.Type, URL: m.URL}
+}
+
 // mapToQuizFull converts the raw YAML schema to domain types.
 func mapToQuizFull(raw yamlQuiz) game.QuizFull {
 	rounds := make([]game.Round, len(raw.Rounds))
@@ -50,6 +59,8 @@ func mapToQuizFull(raw yamlQuiz) game.QuizFull {
 				Text:    q.Text,
 				Answer:  q.Answer,
 				Answers: q.Answers,
+				Choices: q.Choices,
+				Media:   mapMedia(q.Media),
 			}
 		}
 		rounds[i] = game.Round{

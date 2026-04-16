@@ -361,7 +361,7 @@ Feature: Play UI — Player Interface
   # US-11: Multiple Choice Questions (DEP-01 — choices field)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-11
+  @driving_port @real-io @US-11
   Scenario: Play room receives a multiple choice question with the choices list
     Given a quiz file "mc-quiz.yaml" with 1 round including a multiple choice question
     And the server is running with HOST_TOKEN "pub-night-secret"

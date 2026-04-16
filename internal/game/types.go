@@ -7,6 +7,8 @@ type QuestionFull struct {
 	Text    string
 	Answer  string
 	Answers []string
+	Choices []string  // multiple choice options (presentation metadata, not answers)
+	Media   *MediaRef // optional media attachment
 }
 
 // Round is a server-internal round containing its full questions.

@@ -1914,11 +1914,46 @@ func (w *World) thenDraftSavedWithoutError() error {
 }
 
 func (w *World) thenQuestionHasChoices(teamName string) error {
-	return godog.ErrPending
+	// Observable: the latest question_revealed event for teamName has a non-empty choices array.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			choices, _ := question["choices"].([]interface{})
+			if len(choices) > 0 {
+				return true, nil
+			}
+			return false, fmt.Errorf("question_revealed question.choices is empty or absent: %v", question)
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenChoicesListHasCount(count int) error {
-	return godog.ErrPending
+	// Observable: any question_revealed event has exactly count entries in choices.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				continue
+			}
+			choices, _ := question["choices"].([]interface{})
+			if len(choices) == count {
+				return nil
+			}
+			return fmt.Errorf("expected %d choices, got %d: %v", count, len(choices), choices)
+		}
+	}
+	return fmt.Errorf("no question_revealed event found on any connection")
 }
 
 func (w *World) thenQuestionHasNoChoices(teamName string) error {

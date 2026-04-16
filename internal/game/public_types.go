@@ -3,8 +3,17 @@ package game
 // QuestionPublic is the transport-safe question representation sent to clients.
 // It intentionally has NO Answer or Answers fields (DEC-010).
 type QuestionPublic struct {
-	Text  string `json:"text"`
-	Index int    `json:"index"`
+	Text        string    `json:"text"`
+	Index       int       `json:"index"`
+	Choices     []string  `json:"choices,omitempty"`       // US-11: multiple choice options
+	IsMultiPart bool      `json:"is_multi_part,omitempty"` // US-12: derived from len(Answers) > 1
+	Media       *MediaRef `json:"media,omitempty"`         // US-13: optional media attachment
+}
+
+// MediaRef is the transport-safe media attachment reference.
+type MediaRef struct {
+	Type string `json:"type"` // "image" | "audio" | "video"
+	URL  string `json:"url"`
 }
 
 // RoundPublic is the transport-safe round representation.

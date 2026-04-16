@@ -1,13 +1,18 @@
 package quiz
 
 // yamlQuestion is the raw YAML struct for a single question.
-// Release 3+ fields (answers, choices, media) are parsed but not validated.
 type yamlQuestion struct {
-	Text    string        `yaml:"text"`
-	Answer  string        `yaml:"answer"`
-	Answers []string      `yaml:"answers"`
-	Choices []interface{} `yaml:"choices"`
-	Media   interface{}   `yaml:"media"`
+	Text    string     `yaml:"text"`
+	Answer  string     `yaml:"answer"`
+	Answers []string   `yaml:"answers"`
+	Choices []string   `yaml:"choices"`
+	Media   *yamlMedia `yaml:"media"`
+}
+
+// yamlMedia is the raw YAML struct for a media attachment.
+type yamlMedia struct {
+	Type string `yaml:"type"`
+	URL  string `yaml:"url"`
 }
 
 // yamlRound is the raw YAML struct for a single round.
