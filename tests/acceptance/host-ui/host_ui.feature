@@ -297,8 +297,8 @@ Feature: Host UI — Quizmaster Panel
     And the ceremony progress shows "Question 0 of 2 shown"
     And the "Show Next Question" button is visible
 
-  # @skip @driving_port @real-io @US-05
-  @skip @driving_port @real-io @US-05
+  # @driving_port @real-io @US-05
+  @driving_port @real-io @US-05
   Scenario: Showing the next ceremony question sends it to both display and play rooms
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "ceremony-test.yaml" with 1 round of 2 text questions

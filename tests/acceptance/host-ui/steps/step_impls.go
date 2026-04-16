@@ -326,7 +326,34 @@ func (w *World) givenRoundPlayedWithEqualScores(roundIndex int) error {
 }
 
 func (w *World) givenMarcusOnCeremonyPanel(roundIndex int) error {
-	return w.givenRoundFullyComplete(roundIndex)
+	// Set up: round played and scored, answers marked, ceremony NOT yet started.
+	// State machine: ROUND_ENDED → SCORING (via beginScoringAndWait) → answers marked.
+	// When is invoked next: host_ceremony_show_question(0) starts ceremony (SCORING → CEREMONY).
+	if err := w.givenRoundEnded(roundIndex, defaultQuestionCount); err != nil {
+		return err
+	}
+	if err := w.beginScoringAndWait(roundIndex); err != nil {
+		return err
+	}
+	// Mark all answers so scoring is complete, but leave ceremony unstarted.
+	if w.totalQuestions == 0 {
+		return fmt.Errorf("givenMarcusOnCeremonyPanel: totalQuestions is 0 — round_started not received")
+	}
+	driver := w.hostDriver()
+	for teamName, teamID := range w.teamIDs {
+		for qi := 0; qi < w.totalQuestions; qi++ {
+			if err := driver.HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
+				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
+			}
+			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
+				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
+			}
+		}
+	}
+	// ceremonyStarted flag: ceremony panel is visible (client-side transition).
+	w.ceremonyStarted = true
+	w.ceremonyQuestionsShown = 0
+	return nil
 }
 
 func (w *World) givenCeremonyShowingQuestion(questionIndex int) error {
@@ -554,7 +581,18 @@ func (w *World) whenMarcusStartsCeremony() error {
 }
 
 func (w *World) whenMarcusShowsCeremonyQuestion(questionIndex int) error {
-	return w.hostDriver().HostCeremonyShowQuestion(w.ctx, questionIndex)
+	if err := w.hostDriver().HostCeremonyShowQuestion(w.ctx, questionIndex); err != nil {
+		return err
+	}
+	// Wait for display to receive ceremony_question_shown before incrementing.
+	// This confirms the server processed the command and broadcast the event.
+	if _, ok := w.waitForEvent(roleDisplay, eventCeremonyQuestionShown, eventWaitTimeout); !ok {
+		return fmt.Errorf("display did not receive ceremony_question_shown for question %d", questionIndex)
+	}
+	w.mu.Lock()
+	w.ceremonyQuestionsShown++
+	w.mu.Unlock()
+	return nil
 }
 
 func (w *World) whenMarcusRevealsCeremonyAnswer(questionIndex int) error {
@@ -1333,8 +1371,9 @@ func (w *World) thenGamePanelVisibleBeneathOverlay() error {
 }
 
 func (w *World) thenRevealAnswerButtonVisible() error {
-	// Observable: ceremony_question_shown received — Reveal Answer button follows.
-	return w.hasReceivedEventErr(roleHost, eventCeremonyQuestionShown)
+	// Observable: ceremony_question_shown received on display — Reveal Answer button follows.
+	// The server broadcasts ceremony_question_shown to display and play rooms (not host).
+	return w.hasReceivedEventErr(roleDisplay, eventCeremonyQuestionShown)
 }
 
 func (w *World) thenNoCommandSent(commandName string) error {
