@@ -150,7 +150,6 @@ Feature: Infrastructure -- deployment and CI/CD validation
     When TypeScript type checking is run with strict mode
     Then zero type errors are reported
 
-  @skip
   @infrastructure
   Scenario: Go tests pass with the race detector enabled
     Given the project Go source code is present

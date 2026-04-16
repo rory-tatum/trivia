@@ -8,6 +8,7 @@
 package steps
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -489,7 +490,10 @@ func (w *World) whenTypeScriptTypeCheck() error {
 }
 
 func (w *World) whenGoTestWithRace() error {
-	cmd := exec.CommandContext(w.ctx, "go", "test", "./...", "-race", "-count=1")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "./internal/...", "./cmd/...", "-race", "-count=1", "-timeout=2m")
+	cmd.Dir = "../../../../"
 	out, err := cmd.CombinedOutput()
 	w.quizFixtures["go_test_output"] = string(out)
 	if err != nil {
