@@ -383,7 +383,7 @@ Feature: Play UI — Player Interface
   # US-12: Multi-Part Answers (DEP-01 — is_multi_part field)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-12
+  @driving_port @real-io @US-12
   Scenario: Play room receives a multi-part question with the multi-part indicator
     Given a quiz file "multipart-quiz.yaml" with 1 round including a multi-part question
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -391,7 +391,7 @@ Feature: Play UI — Player Interface
     When the quizmaster reveals the multi-part question
     Then "Team Awesome" receives the question with the multi-part indicator set
 
-  @skip @driving_port @real-io @US-12
+  @driving_port @real-io @US-12
   Scenario: Single-answer questions are revealed without the multi-part indicator
     Given a quiz file "single-answer.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

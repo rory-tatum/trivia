@@ -1979,11 +1979,47 @@ func (w *World) thenQuestionHasNoChoices(teamName string) error {
 }
 
 func (w *World) thenQuestionHasMultiPartIndicator(teamName string) error {
-	return godog.ErrPending
+	// Observable: the question_revealed event for teamName has is_multi_part=true.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			isMultiPart, _ := question["is_multi_part"].(bool)
+			if isMultiPart {
+				return true, nil
+			}
+			return false, fmt.Errorf("expected is_multi_part=true but got %v: %v", question["is_multi_part"], question)
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenQuestionHasNoMultiPartIndicator(teamName string) error {
-	return godog.ErrPending
+	// Observable: the question_revealed event for teamName has is_multi_part=false or absent.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			isMultiPart, _ := question["is_multi_part"].(bool)
+			if !isMultiPart {
+				return true, nil
+			}
+			return false, fmt.Errorf("expected is_multi_part=false or absent but got true: %v", question)
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenQuestionHasMediaReference(teamName string) error {
