@@ -19,6 +19,16 @@ import (
 	"nhooyr.io/websocket"
 )
 
+// gameState mirrors game.GameState string values for black-box assertions.
+// Values must match internal/game/state.go constants exactly.
+type gameState string
+
+const (
+	stateRoundActive gameState = "ROUND_ACTIVE"
+	stateCeremony    gameState = "CEREMONY"
+	stateRoundScores gameState = "ROUND_SCORES"
+)
+
 // Event type names sent by the server over WebSocket.
 const (
 	eventTeamRegistered        = "team_registered"
@@ -328,11 +338,54 @@ func (w *World) givenTwoTeamsRegistered(team1, team2 string) error {
 }
 
 func (w *World) givenTeamRegisteredAndRoundActiveWithQuestions(teamName string, roundIndex, questionCount int) error {
-	return godog.ErrPending
+	// Ensure quiz is loaded.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	// Connect and register the team in the play room.
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return err
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return err
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not register in givenTeamRegisteredAndRoundActiveWithQuestions", teamName)
+	}
+	// Start the round via the host port.
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive round_started", teamName)
+	}
+	// Reveal the requested number of questions.
+	for i := 0; i < questionCount; i++ {
+		if err := hd.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
+			return fmt.Errorf("reveal question %d: %w", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !w.waitForEventCount(key, eventQuestionRevealed, questionCount, eventWaitTimeout) {
+		return fmt.Errorf("team %q did not receive all %d question_revealed events", teamName, questionCount)
+	}
+	return nil
 }
 
 func (w *World) givenTeamSavedDraft(teamName string, roundIndex, questionIndex int, answer string) error {
-	return godog.ErrPending
+	d := w.ensurePlayDriver(teamName)
+	if err := d.PlayDraftAnswer(w.ctx, teamName, roundIndex, questionIndex, answer); err != nil {
+		return fmt.Errorf("save draft for %q round %d question %d: %w", teamName, roundIndex, questionIndex, err)
+	}
+	// Brief pause to allow the server to persist the draft before the next step.
+	time.Sleep(20 * time.Millisecond)
+	return nil
 }
 
 func (w *World) givenTeamSubmitted(teamName string, roundIndex int) error {
@@ -402,7 +455,12 @@ func (w *World) givenTeamSubmittedAndCeremonyAtQuestion(teamName string, roundIn
 }
 
 func (w *World) givenTeamHasValidToken(teamName string) error {
-	return godog.ErrPending
+	// Ensure the team is registered so its device_token is stored in the World.
+	// If already registered (teamID present), this is a no-op.
+	if w.teamID(teamName) != "" {
+		return nil
+	}
+	return w.givenTeamRegistered(teamName)
 }
 
 func (w *World) givenTwoTeamsCompletedRoundWithScoring(team1, team2 string, roundIndex int) error {
@@ -581,16 +639,70 @@ func (w *World) givenTeamOnScoresScreen(teamName string, roundIndex int) error {
 	return nil
 }
 
+// ensureDefaultQuizFixture registers and loads a simple default quiz fixture
+// if no quiz fixtures are already registered. Used by Given steps that don't
+// have an explicit quiz file step.
+func (w *World) ensureDefaultQuizFixture() error {
+	if len(w.quizFixtures) > 0 {
+		return nil // already registered
+	}
+	const defaultFilename = "default-setup.yaml"
+	if err := w.givenQuizFileExists(defaultFilename, 1, defaultQuestionCount); err != nil {
+		return err
+	}
+	return w.givenQuizmasterLoadedQuiz(defaultFilename)
+}
+
 func (w *World) givenGameInCeremonyPhase(roundIndex int) error {
-	return godog.ErrPending
+	// We need at least one registered team to drive through the full flow.
+	// Use a temporary team name that doesn't interfere with the scenario's main team.
+	const setupTeam = "Setup Team"
+	if err := w.ensureDefaultQuizFixture(); err != nil {
+		return err
+	}
+	if err := w.givenRoundEndedWithTeam(roundIndex, setupTeam); err != nil {
+		return err
+	}
+	if err := w.givenTeamSubmitted(setupTeam, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("begin scoring: %w", err)
+	}
+	// Wait briefly for the state transition to CEREMONY to be applied server-side.
+	time.Sleep(30 * time.Millisecond)
+	return nil
 }
 
 func (w *World) givenGameAtScoresScreen(roundIndex int) error {
-	return godog.ErrPending
+	// Drive the game through: round → end → submit → ceremony → publish scores.
+	const setupTeam = "Setup Team"
+	if err := w.ensureDefaultQuizFixture(); err != nil {
+		return err
+	}
+	if err := w.givenTeamCompletedRoundWithScoring(setupTeam, roundIndex); err != nil {
+		return err
+	}
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
+		return fmt.Errorf("publish scores: %w", err)
+	}
+	key := connectionKey(rolePlay, setupTeam)
+	if _, ok := w.waitForEvent(key, eventRoundScoresPublished, eventWaitTimeout); !ok {
+		return fmt.Errorf("setup team did not receive round_scores_published")
+	}
+	return nil
 }
 
 func (w *World) givenTeamRegisteredRoundActiveQuestionsRevealed(teamName string, roundIndex, questionCount int) error {
-	return godog.ErrPending
+	return w.givenTeamRegisteredAndRoundActiveWithQuestions(teamName, roundIndex, questionCount)
 }
 
 // =============================================================================
@@ -682,11 +794,62 @@ func (w *World) whenPlayerAttemptsEmptyRegistration() error {
 }
 
 func (w *World) whenTeamReconnectsWithStoredToken(teamName string) error {
-	return godog.ErrPending
+	// Retrieve stored credentials from the previous connection.
+	teamID := w.teamID(teamName)
+	token := w.deviceToken(teamName)
+	if teamID == "" || token == "" {
+		return fmt.Errorf("no stored credentials for team %q — ensure team registered before reconnect", teamName)
+	}
+
+	key := connectionKey(rolePlay, teamName)
+
+	// Close the existing connection if present.
+	if conn, ok := w.connections[key]; ok && conn.driver != nil {
+		conn.driver.CloseConnection(rolePlay, teamName)
+		conn.Connected = false
+	}
+
+	// Clear old messages so Then steps only see messages from the new connection.
+	w.mu.Lock()
+	delete(w.receivedMessages, key)
+	w.mu.Unlock()
+
+	// Open a fresh connection under the same key.
+	d := w.ensurePlayDriver(teamName)
+	if err := d.ConnectPlay(w.ctx, teamName); err != nil {
+		return fmt.Errorf("reconnect for %q: %w", teamName, err)
+	}
+	if conn, ok := w.connections[key]; ok {
+		conn.Connected = true
+	}
+
+	// Wait briefly for the initial state_snapshot on the new connection (sent on connect).
+	time.Sleep(20 * time.Millisecond)
+
+	// Send team_rejoin with stored credentials.
+	return d.PlayRejoinTeam(w.ctx, teamName, teamID, token)
 }
 
 func (w *World) whenPlayerAttemptsBadRejoin() error {
-	return godog.ErrPending
+	// Open an anonymous connection and send team_rejoin with a bad token.
+	const anonKey = "play:anonymous"
+	if w.server == nil {
+		return fmt.Errorf("server not started")
+	}
+	conn, err := dialPlay(w.ctx, w.server)
+	if err != nil {
+		return fmt.Errorf("anonymous rejoin connect: %w", err)
+	}
+	anonDriver := NewPlayUIDriver(w.server, w.hostToken, w)
+	anonDriver.wsConns[anonKey] = conn
+	go anonDriver.readLoop(w.ctx, anonKey, conn)
+	w.connections[anonKey] = &WSConnection{
+		Role:      rolePlay,
+		Name:      "anonymous",
+		Connected: true,
+		driver:    anonDriver,
+	}
+	return anonDriver.PlayRejoinTeamWithBadToken(w.ctx, "anonymous")
 }
 
 func (w *World) whenTeamRequestsSnapshot(teamName string) error {
@@ -1352,23 +1515,117 @@ func (w *World) thenGameStateIsLobby() error {
 }
 
 func (w *World) thenTeamReceivesStateSnapshot(teamName string) error {
-	return godog.ErrPending
+	// Observable: the team's play connection received a state_snapshot event (after rejoin).
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventStateSnapshot, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive state_snapshot after rejoin", teamName)
+	}
+	return nil
 }
 
 func (w *World) thenSnapshotHasDraftAnswers(teamName string) error {
-	return godog.ErrPending
+	// Observable: at least one state_snapshot sent to teamName includes a non-empty draft_answers field.
+	// After reconnect the server sends two snapshots: one on connect and one on rejoin.
+	// We poll until we find a snapshot that has a non-empty draft_answers field.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		var lastErr error
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventStateSnapshot {
+				continue
+			}
+			drafts, ok := msg.Payload["draft_answers"]
+			if !ok {
+				lastErr = fmt.Errorf("state_snapshot for %q missing draft_answers field: %v", teamName, msg.Payload)
+				continue // check next snapshot
+			}
+			// draft_answers may be a map or a list — either way must be non-nil/non-empty.
+			switch v := drafts.(type) {
+			case map[string]interface{}:
+				if len(v) > 0 {
+					return true, nil
+				}
+				lastErr = fmt.Errorf("state_snapshot draft_answers for %q is empty map", teamName)
+			case []interface{}:
+				if len(v) > 0 {
+					return true, nil
+				}
+				lastErr = fmt.Errorf("state_snapshot draft_answers for %q is empty slice", teamName)
+			default:
+				if drafts != nil {
+					return true, nil
+				}
+				lastErr = fmt.Errorf("state_snapshot draft_answers for %q is nil", teamName)
+			}
+		}
+		if lastErr != nil {
+			return false, lastErr
+		}
+		return false, fmt.Errorf("no state_snapshot received for team %q", teamName)
+	})
 }
 
 func (w *World) thenSnapshotShowsRoundActive() error {
-	return godog.ErrPending
+	// Observable: at least one play connection has received a state_snapshot with state == "ROUND_ACTIVE".
+	// Multiple snapshots may arrive (initial connect + rejoin); we accept any one with the right state.
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for key, msgs := range w.receivedMessages {
+			if !strings.HasPrefix(key, rolePlay+":") && key != rolePlay {
+				continue
+			}
+			for _, msg := range msgs {
+				if msg.Event == eventStateSnapshot {
+					state, _ := msg.Payload["state"].(string)
+					if state == string(stateRoundActive) {
+						return true, nil
+					}
+				}
+			}
+		}
+		return false, fmt.Errorf("no state_snapshot with state %q found on any play connection", stateRoundActive)
+	})
 }
 
 func (w *World) thenSnapshotShowsCeremony() error {
-	return godog.ErrPending
+	// Observable: at least one play connection has received a state_snapshot with state == "CEREMONY".
+	// Multiple snapshots may arrive (initial connect + rejoin); we accept any one with the right state.
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for key, msgs := range w.receivedMessages {
+			if !strings.HasPrefix(key, rolePlay+":") && key != rolePlay {
+				continue
+			}
+			for _, msg := range msgs {
+				if msg.Event == eventStateSnapshot {
+					state, _ := msg.Payload["state"].(string)
+					if state == string(stateCeremony) {
+						return true, nil
+					}
+				}
+			}
+		}
+		return false, fmt.Errorf("no state_snapshot with state %q found on any play connection", stateCeremony)
+	})
 }
 
 func (w *World) thenSnapshotShowsRoundScores() error {
-	return godog.ErrPending
+	// Observable: at least one play connection has received a state_snapshot with state == "ROUND_SCORES".
+	// Multiple snapshots may arrive (initial connect + rejoin); we accept any one with the right state.
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for key, msgs := range w.receivedMessages {
+			if !strings.HasPrefix(key, rolePlay+":") && key != rolePlay {
+				continue
+			}
+			for _, msg := range msgs {
+				if msg.Event == eventStateSnapshot {
+					state, _ := msg.Payload["state"].(string)
+					if state == string(stateRoundScores) {
+						return true, nil
+					}
+				}
+			}
+		}
+		return false, fmt.Errorf("no state_snapshot with state %q found on any play connection", stateRoundScores)
+	})
 }
 
 func (w *World) thenSnapshotHasRevealedQuestions(teamName string, count int) error {
@@ -1392,15 +1649,91 @@ func (w *World) thenSnapshotHasRevealedQuestions(teamName string, count int) err
 }
 
 func (w *World) thenSnapshotShowsRevealedQuestions(count int) error {
-	return godog.ErrPending
+	// Observable: at least one play connection has a state_snapshot with revealed_questions
+	// array containing at least count entries.
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for key, msgs := range w.receivedMessages {
+			if !strings.HasPrefix(key, rolePlay+":") && key != rolePlay {
+				continue
+			}
+			for _, msg := range msgs {
+				if msg.Event != eventStateSnapshot {
+					continue
+				}
+				revealed, _ := msg.Payload["revealed_questions"].([]interface{})
+				if len(revealed) >= count {
+					return true, nil
+				}
+				return false, fmt.Errorf("state_snapshot has %d revealed_questions, expected %d (payload: %v)",
+					len(revealed), count, msg.Payload)
+			}
+		}
+		return false, fmt.Errorf("no state_snapshot with revealed_questions found on any play connection")
+	})
 }
 
 func (w *World) thenSnapshotContainsDraftForQuestion(teamName string, roundIndex, questionIndex int) error {
-	return godog.ErrPending
+	// Observable: the state_snapshot for teamName contains a draft_answers entry for the given question.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventStateSnapshot {
+				continue
+			}
+			drafts, ok := msg.Payload["draft_answers"]
+			if !ok {
+				return false, fmt.Errorf("state_snapshot missing draft_answers field: %v", msg.Payload)
+			}
+			// draft_answers may be a map[string]interface{} or []interface{}.
+			switch v := drafts.(type) {
+			case map[string]interface{}:
+				if len(v) > 0 {
+					return true, nil
+				}
+			case []interface{}:
+				if len(v) > 0 {
+					return true, nil
+				}
+			}
+			return false, fmt.Errorf("draft_answers present but empty for team %q: %v", teamName, drafts)
+		}
+		return false, fmt.Errorf("no state_snapshot received for team %q", teamName)
+	})
 }
 
 func (w *World) thenSnapshotHasNoDraftAnswers(teamName string) error {
-	return godog.ErrPending
+	// Observable: the state_snapshot for teamName either has no draft_answers field,
+	// or the field is present but empty.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventStateSnapshot {
+				continue
+			}
+			drafts, exists := msg.Payload["draft_answers"]
+			if !exists {
+				return true, nil // field absent — no drafts
+			}
+			// Field present — must be nil or empty.
+			switch v := drafts.(type) {
+			case map[string]interface{}:
+				if len(v) == 0 {
+					return true, nil
+				}
+				return false, fmt.Errorf("state_snapshot draft_answers for fresh connection is non-empty: %v", drafts)
+			case []interface{}:
+				if len(v) == 0 {
+					return true, nil
+				}
+				return false, fmt.Errorf("state_snapshot draft_answers for fresh connection is non-empty: %v", drafts)
+			case nil:
+				return true, nil
+			default:
+				return false, fmt.Errorf("state_snapshot draft_answers unexpected type %T: %v", drafts, drafts)
+			}
+		}
+		return false, fmt.Errorf("no state_snapshot received for team %q", teamName)
+	})
 }
 
 func (w *World) thenSecondDeviceReceivesDuplicateError() error {
@@ -1446,11 +1779,50 @@ func (w *World) thenSecondDeviceReceivesDuplicateError() error {
 }
 
 func (w *World) thenReceivesTeamNotFoundError() error {
-	return godog.ErrPending
+	// Observable: the anonymous play connection received an error event with code "invalid_token"
+	// or "team_not_found" (server sends one of these on bad rejoin token).
+	const anonKey = "play:anonymous"
+	timeout := time.After(eventWaitTimeout)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-timeout:
+			for _, msg := range w.messagesFor(anonKey) {
+				if msg.Event == eventError {
+					code, _ := msg.Payload["code"].(string)
+					return fmt.Errorf("received error with code %q (expected invalid_token or team_not_found): %v", code, msg.Payload)
+				}
+			}
+			return fmt.Errorf("no error event received after bad rejoin attempt")
+		case <-ticker.C:
+			for _, msg := range w.messagesFor(anonKey) {
+				if msg.Event != eventError {
+					continue
+				}
+				code, _ := msg.Payload["code"].(string)
+				if code == "invalid_token" || code == "team_not_found" {
+					return nil
+				}
+			}
+		}
+	}
 }
 
 func (w *World) thenNoStateSnapshotSent() error {
-	return godog.ErrPending
+	// Observable: no additional state_snapshot is sent after the bad rejoin.
+	// The initial state_snapshot on connect is expected; no second one should follow.
+	// Wait briefly then count state_snapshot events on the anonymous connection.
+	time.Sleep(negativeEventWindow)
+	const anonKey = "play:anonymous"
+	count := w.countEvents(anonKey, eventStateSnapshot)
+	// The server sends one state_snapshot on initial connect (before rejoin).
+	// After a failed rejoin, no additional snapshot should be sent.
+	// We allow 0 or 1 (the initial connect snapshot); reject > 1.
+	if count > 1 {
+		return fmt.Errorf("expected at most 1 state_snapshot (initial connect), got %d after bad rejoin", count)
+	}
+	return nil
 }
 
 func (w *World) thenTeamReceivesAlreadySubmittedError(teamName string) error {

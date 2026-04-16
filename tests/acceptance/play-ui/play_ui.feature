@@ -86,7 +86,7 @@ Feature: Play UI — Player Interface
   # US-02: Auto-Rejoin and Device Recognition
   # ============================================================================
 
-  @skip @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Player rejoins the game and receives their saved draft answers
     Given a quiz file "rejoin-quiz.yaml" with 1 round of 4 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -98,7 +98,7 @@ Feature: Play UI — Player Interface
     And the snapshot includes "Team Awesome"'s previously saved draft answers
     And the snapshot shows the game is in round active state
 
-  @skip @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Player rejoins during ceremony and is routed to the ceremony screen
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And the game is in the ceremony phase for Round 1
@@ -106,7 +106,7 @@ Feature: Play UI — Player Interface
     When "Team Awesome" reconnects with their stored device token
     Then "Team Awesome" receives a game state snapshot showing the ceremony is in progress
 
-  @skip @driving_port @real-io @US-02
+  @driving_port @real-io @US-02
   Scenario: Player rejoin is rejected when their device token is not recognised
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When a player attempts to rejoin with an unrecognised device token
@@ -170,7 +170,7 @@ Feature: Play UI — Player Interface
     When "Team Awesome" reconnects with their stored device token
     Then the state snapshot contains "Team Awesome"'s draft answer for Round 1 question 1
 
-  @skip @driving_port @real-io @US-04
+  @driving_port @real-io @US-04
   Scenario: Draft answers are not included in a fresh connection state snapshot
     Given a quiz file "fresh-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -292,7 +292,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" has received 3 ceremony question events
     And "Team Awesome" has received 3 answer reveal events
 
-  @skip @driving_port @real-io @US-08
+  @driving_port @real-io @US-08
   Scenario: Player rejoining during ceremony receives a ceremony-state snapshot
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And the game is in the ceremony phase for Round 1
@@ -338,7 +338,7 @@ Feature: Play UI — Player Interface
   # US-10: Connection Status and State Restore on Reconnect
   # ============================================================================
 
-  @skip @driving_port @real-io @US-10
+  @driving_port @real-io @US-10
   Scenario: Player reconnecting receives a state snapshot restoring their game position
     Given a quiz file "reconnect-quiz.yaml" with 1 round of 3 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -347,7 +347,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives a game state snapshot
     And the snapshot shows 3 revealed questions for Round 1
 
-  @skip @driving_port @real-io @US-10
+  @driving_port @real-io @US-10
   Scenario: Player reconnecting during scores phase receives a scores-state snapshot
     Given a quiz file "scores-reconnect.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
