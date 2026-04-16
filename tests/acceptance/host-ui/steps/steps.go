@@ -622,6 +622,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.thenLoadErrorDisplayed()
 		})
 
+	sc.Step(`^the error is displayed below the file path input$`,
+		func() error {
+			return w.thenLoadErrorDisplayed()
+		})
+
 	sc.Step(`^an error message is shown below the file path input$`,
 		func() error {
 			return w.thenLoadErrorDisplayed()

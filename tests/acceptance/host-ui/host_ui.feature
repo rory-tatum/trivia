@@ -382,8 +382,8 @@ Feature: Host UI — Quizmaster Panel
   # (Focused tests with in-memory server or direct port invocation)
   # ============================================================================
 
-  # @skip @infrastructure-failure @in-memory @US-02
-  @skip @infrastructure-failure @in-memory @US-02
+  # @infrastructure-failure @in-memory @US-02
+  @infrastructure-failure @in-memory @US-02
   Scenario: Quiz load fails when the specified file cannot be read from disk
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And Marcus has opened the quizmaster panel with a valid host token
