@@ -412,8 +412,8 @@ Feature: Host UI — Quizmaster Panel
     When Marcus sends a mark-answer command before starting a round
     Then the server sends an error event in response
 
-  # @skip @infrastructure-failure @in-memory @US-03
-  @skip @infrastructure-failure @in-memory @US-03
+  # @infrastructure-failure @in-memory @US-03
+  @infrastructure-failure @in-memory @US-03
   Scenario: Starting a round with an invalid round index is rejected by the server
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "infra-test.yaml" with 1 round of 2 text questions
