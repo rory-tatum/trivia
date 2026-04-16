@@ -475,7 +475,7 @@ Feature: Play UI — Player Interface
   # At least one scenario per driven adapter exercising real I/O
   # ============================================================================
 
-  @skip @real-io @adapter-integration @US-01
+  @real-io @adapter-integration @US-01
   Scenario: Player connecting to the play room receives an immediate game state snapshot
     Given the server is running with HOST_TOKEN "pub-night-secret"
     When "Team Awesome" connects to the play room

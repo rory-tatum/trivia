@@ -734,7 +734,14 @@ func (w *World) thenQuestionHasNoMedia(teamName string) error {
 }
 
 func (w *World) thenConnectionAcceptedWithSnapshot(teamName string) error {
-	return godog.ErrPending
+	// Observable: connection was upgraded to WebSocket and a state_snapshot
+	// was sent immediately — before any team_register.
+	key := connectionKey(rolePlay, teamName)
+	_, ok := w.waitForEvent(key, eventStateSnapshot, eventWaitTimeout)
+	if !ok {
+		return fmt.Errorf("team %q did not receive state_snapshot after connecting", teamName)
+	}
+	return nil
 }
 
 func (w *World) thenRoundScoresPayloadHasStructuredList(teamName string) error {
