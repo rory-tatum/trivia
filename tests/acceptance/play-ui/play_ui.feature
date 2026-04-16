@@ -404,7 +404,7 @@ Feature: Play UI — Player Interface
   # US-13: Media Questions (DEP-01 — media field)
   # ============================================================================
 
-  @skip @driving_port @real-io @US-13
+  @driving_port @real-io @US-13
   Scenario: Play room receives an image question with the media attachment
     Given a quiz file "media-quiz.yaml" with 1 round including an image question
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -413,7 +413,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the question with a media reference
     And the media reference includes the media type and a URL
 
-  @skip @driving_port @real-io @US-13
+  @driving_port @real-io @US-13
   Scenario: Text questions are revealed without a media attachment
     Given a quiz file "no-media.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"

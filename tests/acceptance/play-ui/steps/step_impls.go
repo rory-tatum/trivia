@@ -2023,15 +2023,79 @@ func (w *World) thenQuestionHasNoMultiPartIndicator(teamName string) error {
 }
 
 func (w *World) thenQuestionHasMediaReference(teamName string) error {
-	return godog.ErrPending
+	// Observable: the question_revealed event for teamName has a non-nil media object.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			media, ok := question["media"]
+			if !ok || media == nil {
+				return false, fmt.Errorf("expected media field but got nil or absent: %v", question)
+			}
+			if _, ok := media.(map[string]interface{}); !ok {
+				return false, fmt.Errorf("expected media to be an object, got %T: %v", media, media)
+			}
+			return true, nil
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenMediaReferenceHasTypeAndURL() error {
-	return godog.ErrPending
+	// Observable: any question_revealed event has a media object with non-empty type and url.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				continue
+			}
+			media, _ := question["media"].(map[string]interface{})
+			if media == nil {
+				return fmt.Errorf("question_revealed media is nil: %v", question)
+			}
+			mediaType, _ := media["type"].(string)
+			mediaURL, _ := media["url"].(string)
+			if mediaType == "" {
+				return fmt.Errorf("media.type is empty: %v", media)
+			}
+			if mediaURL == "" {
+				return fmt.Errorf("media.url is empty: %v", media)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no question_revealed event found on any connection")
 }
 
 func (w *World) thenQuestionHasNoMedia(teamName string) error {
-	return godog.ErrPending
+	// Observable: the question_revealed event for teamName has no media field or media is null.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 10*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				return false, fmt.Errorf("question_revealed missing question object: %v", msg.Payload)
+			}
+			media, exists := question["media"]
+			if !exists || media == nil {
+				return true, nil
+			}
+			return false, fmt.Errorf("expected no media but got: %v", media)
+		}
+		return false, fmt.Errorf("team %q has not received question_revealed", teamName)
+	})
 }
 
 func (w *World) thenConnectionAcceptedWithSnapshot(teamName string) error {
