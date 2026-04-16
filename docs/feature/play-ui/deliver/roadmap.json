@@ -1,0 +1,582 @@
+{
+  "roadmap": {
+    "project_id": "play-ui",
+    "created_at": "2026-04-16T17:51:41Z",
+    "total_steps": 34,
+    "phases": 9
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "Walking Skeleton + Backend Wiring (DEP-02, DEP-03, DEP-04)",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Walking Skeleton — full game loop over real WebSocket",
+          "description": "Implement the end-to-end walking skeleton: player joins, answers, submits, sees ceremony and round scores. Requires DEP-02 (ceremony verdicts to play room), DEP-03 (submission_received broadcast to play room), and DEP-04 (team names in score payloads) to be wired simultaneously. Also updates the host-ui test that asserts play room does not receive ceremony events, since DEP-02 changes that contract.",
+          "criteria": "A player WebSocket client can connect to /play, register, receive round-started, receive revealed questions, save draft answers, receive round-ended, submit answers, receive submission_received broadcast, receive ceremony_question_shown, receive ceremony_answer_revealed with a verdicts array, receive round_scores with team names and totals, and receive game_over. The host-ui scenario 'Revealing the answer sends it to display only — play room does not receive it' must be updated to reflect the new contract where play room does receive ceremony_answer_revealed.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player joins the game, answers questions, submits, and sees round scores",
+          "files_to_modify": [
+            "internal/game/game.go",
+            "internal/hub/events.go",
+            "internal/handler/host.go",
+            "internal/handler/play.go",
+            "tests/acceptance/host-ui/steps/step_impls.go",
+            "tests/acceptance/host-ui/host_ui.feature"
+          ],
+          "dependencies": [],
+          "estimated_hours": 4,
+          "implementation_notes": "This is the highest-risk step — it wires three DEPs at once. Add VerdictsByQuestion() and RoundScoresWithNames() read methods to game.go (DEP-02/DEP-04). Extend CeremonyAnswerRevealedPayload.Verdicts in events.go. In handler/host.go broadcast ceremony_answer_revealed and round_scores to RoomPlay. In handler/play.go broadcast submission_received to RoomPlay after handleSubmitAnswers. The play.go WebSocket handler itself (the /play HTTP upgrade endpoint) must be registered in the server. Update host-ui: in host_ui.feature change the scenario title from 'Revealing the answer sends it to display only — play room does not receive it' to 'Revealing the answer sends it to both display and play rooms'. Change line 323 from 'And the play screen for \"The Brainiacs\" does not receive the answer' to 'And the play screen for \"The Brainiacs\" receives the ceremony answer reveal'. In step_impls.go update the corresponding step function to assert ceremony_answer_revealed IS received (not absent) on the play connection."
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Adapter — Play Room WebSocket Connection",
+      "steps": [
+        {
+          "id": "02-01",
+          "name": "ADP-01 — Play room WebSocket connection accepted",
+          "description": "Verify the /play WebSocket endpoint accepts a connection and immediately sends a game state snapshot. This is the adapter integration test confirming the driven port (nhooyr.io/websocket) is wired correctly.",
+          "criteria": "When a client connects to /play, the connection is upgraded to WebSocket and a state snapshot message is sent before any further interaction. The snapshot payload conforms to the agreed envelope schema.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player connecting to the play room receives an immediate game state snapshot",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["01-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "Step exercises the real HTTP upgrade path. Ensure the play handler returns the snapshot synchronously on connect (before any register message). Use the nhooyr.io/websocket library consistent with host-ui adapter. The snapshot on bare connect (before register) should show lobby state with no team identity."
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Team Registration",
+      "steps": [
+        {
+          "id": "03-01",
+          "name": "US01-01 — Team registers and receives identity",
+          "description": "A player sends a register message with a unique team name and receives back a team identity containing a team ID and a device token.",
+          "criteria": "After registering with a unique name, the response contains a team identifier and a device token. Both fields are non-empty strings.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player registers a unique team name and receives their team identity",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["02-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "Add a register message type to the play handler. On success, mint a device token (UUID or similar) and store team_id → token in the hub or game state. Return team_identity event with team_id and device_token fields."
+        },
+        {
+          "id": "03-02",
+          "name": "US01-02 — Duplicate name rejected",
+          "description": "A second device attempting to register with an already-taken team name receives a name-already-taken error.",
+          "criteria": "When a name is already registered and a second register message arrives with the same name, the server returns an error event with a name-already-taken code. No team identity is issued to the second device.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player receives a duplicate name rejection when their team name is already taken",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["03-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Check existing team names in the hub before registering. Return a structured error event; do not close the WebSocket connection — allow the client to retry with a different name."
+        },
+        {
+          "id": "03-03",
+          "name": "US01-03 — Fresh connection receives lobby snapshot",
+          "description": "A player who connects but has not yet registered receives a game state snapshot indicating the game is in the lobby.",
+          "criteria": "The state snapshot sent on connect shows phase=lobby. No team identity is embedded in this pre-registration snapshot.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player connects to the play room and receives an initial game state snapshot",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["02-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "The snapshot is sent immediately on WebSocket accept, before any message from the client. Reuse the same snapshot builder used for rejoin. Phase field must reflect current game phase at time of connect."
+        },
+        {
+          "id": "03-04",
+          "name": "INF-01 — Empty team name rejected",
+          "description": "Attempting to register with an empty string team name is rejected with an error response and no identity is issued.",
+          "criteria": "A register message with an empty or whitespace-only team name returns an error event. No team_id or device_token is returned.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Team registration rejected when the team name is empty",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["03-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Validate the name field before calling the domain register method. Trim whitespace and reject if empty. This is an infrastructure-failure scenario — no game state mutation occurs."
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Question Reveal and Draft Answers",
+      "steps": [
+        {
+          "id": "04-01",
+          "name": "US03-01 — Question arrives when quizmaster reveals it",
+          "description": "When the quizmaster reveals a question, connected play room clients receive a question_revealed event containing the question text.",
+          "criteria": "After the quizmaster reveals question 1, the play room client receives a question_revealed event. The event payload contains the question text. The question does not include any answer field.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives the question when the quizmaster reveals it",
+          "files_to_modify": [
+            "internal/handler/host.go",
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["03-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "The host handler already broadcasts to RoomDisplay; add RoomPlay broadcast of question_revealed using QuestionPublic (StripAnswers result). Ensure the play room hub subscription is established at connect time. Answer field must be absent — verified by StripAnswers."
+        },
+        {
+          "id": "04-02",
+          "name": "US03-02 — Questions accumulate across reveals",
+          "description": "As the quizmaster reveals multiple questions one by one, the play room client receives each question_revealed event in sequence and accumulates all of them.",
+          "criteria": "After 3 sequential reveals, the play room client has received 3 distinct question_revealed events. Each event contains a different question text.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Questions accumulate as the quizmaster reveals them one by one",
+          "files_to_modify": [
+            "internal/handler/host.go"
+          ],
+          "dependencies": ["04-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "No state management change needed — each reveal broadcast is independent. Verify ordering is preserved (question index field in payload)."
+        },
+        {
+          "id": "04-03",
+          "name": "US03-03 — Mid-round join receives all revealed questions in snapshot",
+          "description": "A player who joins after some questions have already been revealed receives the full list of revealed questions in their initial state snapshot.",
+          "criteria": "If 4 of 5 questions have been revealed before a player connects, the state snapshot sent to that player includes all 4 revealed questions. The snapshot phase field indicates round_active.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player joining mid-round receives all previously revealed questions in the state snapshot",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["04-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "The snapshot builder must call a game read method that returns the current list of revealed QuestionPublic entries. Store revealed questions in game state (already tracked for host-ui via RevealedQuestions or equivalent). The snapshot must use StripAnswers for each question."
+        },
+        {
+          "id": "04-04",
+          "name": "US03-04 — Draft answer saved to server",
+          "description": "A player sends a draft answer for a revealed question and the server persists it without returning an error.",
+          "criteria": "After sending a save_draft message for a revealed question, the server does not return an error event. The draft is stored server-side (verified by rejoin snapshot in US04-01).",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player saves a draft answer to the server for a revealed question",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["04-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "Add a save_draft message handler in play.go. Store draft answers keyed by (team_id, round_number, question_index) in game state. No response event is required on success — silent acceptance. Confirm the game.go method for storing drafts is not exposing QuestionFull."
+        },
+        {
+          "id": "04-05",
+          "name": "INF-06 — Draft before round silently accepted",
+          "description": "A draft save message sent before any round has started is accepted silently — no error is returned.",
+          "criteria": "When a registered team sends a save_draft message before the round has started, no error event is returned to the client.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Draft answer sent before a round has started is silently accepted",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["04-04"],
+          "estimated_hours": 1,
+          "implementation_notes": "The draft handler must not validate game phase before storing. Storing a draft for a question that does not yet exist is a no-op or stored speculatively — either is acceptable as long as no error is returned."
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "name": "Round End and Answer Submission",
+      "steps": [
+        {
+          "id": "05-01",
+          "name": "US05-01 — Round ended notification received",
+          "description": "When the quizmaster ends the round, the play room receives a round_ended event containing the round number.",
+          "criteria": "After the quizmaster ends Round 1, the play room client receives a round_ended event. The event payload includes the round number field matching Round 1.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room is notified when the quizmaster ends the round",
+          "files_to_modify": [
+            "internal/handler/host.go"
+          ],
+          "dependencies": ["04-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Broadcast round_ended to RoomPlay in the handleEndRound path in host.go. Reuse the same event type already sent to RoomDisplay if the payload is compatible; otherwise create a play-room-specific event in events.go."
+        },
+        {
+          "id": "05-02",
+          "name": "US06-01 — Submit and receive locked confirmation",
+          "description": "After the round ends, a team submits their answers and receives a submission_locked confirmation event indicating their answers are locked for the round.",
+          "criteria": "A submit_answers message for Round 1 returns a submission_locked event. The event payload includes the round number. The answers are stored server-side.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Team submits answers and receives a locked confirmation",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["05-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "Add submit_answers message handler in play.go. Call the game domain method to lock answers for the team and round. Return submission_locked event on success. The submission_received broadcast to RoomPlay (DEP-03) was wired in step 01-01 — this step only concerns the per-submitter confirmation."
+        },
+        {
+          "id": "05-03",
+          "name": "US06-02 + INF-05 — Double submit receives already-submitted error",
+          "description": "A team that attempts to submit a second time for the same round receives an already-submitted error. This covers both the real-io scenario (US06-02) and the infrastructure-failure idempotency scenario (INF-05).",
+          "criteria": "A second submit_answers message from the same team for the same round returns an already-submitted error event. No duplicate storage occurs. The idempotency check applies regardless of connection state.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Team submitting a second time receives an already-submitted response",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["05-02"],
+          "estimated_hours": 1,
+          "implementation_notes": "The domain submit method should return a distinct error type for already-submitted. Map this to an already_submitted error event in play.go. The INF-05 scenario uses a separate in-memory setup but exercises the same code path."
+        },
+        {
+          "id": "05-04",
+          "name": "US06-03 + INF-03 — Submit before round rejected",
+          "description": "Attempting to submit answers before the round has started is rejected with an error response. Covers both real-io (US06-03) and infrastructure-failure (INF-03) variants.",
+          "criteria": "A submit_answers message sent when no round is active returns an error event. The error indicates the round has not started. No answers are stored.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Submission is rejected when the round has not yet started",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["05-02"],
+          "estimated_hours": 1,
+          "implementation_notes": "The domain submit method must validate the current game phase. Return a round_not_started error event. Reuse the same handler path for both INF-03 and US06-03 — they differ only in setup, not in the code exercised."
+        },
+        {
+          "id": "05-05",
+          "name": "US06-04 — Blank answer submission accepted",
+          "description": "A team that submits with all answer fields empty receives a valid submission_locked confirmation. Blank submissions are not rejected.",
+          "criteria": "A submit_answers message where all answer values are empty strings returns a submission_locked event with the correct round number.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Team can submit with all answers blank",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["05-02"],
+          "estimated_hours": 1,
+          "implementation_notes": "No validation of answer content in the handler or domain — blank answers are valid. The scenario distinguishes from INF-01 (name validation) — content is not validated, only structure."
+        },
+        {
+          "id": "05-06",
+          "name": "INF-02 — Submit with unknown team ID rejected",
+          "description": "A submit message carrying an unrecognised team identifier is rejected with an error response.",
+          "criteria": "A submit_answers message with a team_id that does not match any registered team returns an error event. No answers are stored.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Submit rejected when the team identifier is unknown",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["05-02"],
+          "estimated_hours": 1,
+          "implementation_notes": "Validate team_id lookup before calling domain submit. Return an unknown_team error event. This is an infrastructure-failure scenario — use in-memory setup. The team_id is the identifier minted at registration, not the device token."
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "name": "Post-Submit Waiting Screen and Ceremony",
+      "steps": [
+        {
+          "id": "06-01",
+          "name": "US07-01 + US07-02 — submission_received broadcast to play room (DEP-03)",
+          "description": "After submission, the play room receives a submission_received broadcast naming the submitting team. Both scenarios — another team's submission visible to observers (US07-01) and the submitter's own notification (US07-02) — are covered in this step.",
+          "criteria": "When Team B submits, Team A (already submitted) receives a submission_received event with Team B's name and round number. When Team A submits, Team A itself also receives a submission_received event with its own name and round number.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room is notified in real time when another team submits their answers",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["05-02"],
+          "estimated_hours": 2,
+          "implementation_notes": "The RoomPlay broadcast of submission_received was wired in step 01-01 (DEP-03). This step unskips the targeted acceptance scenarios and verifies the payload structure (team_name, round_number fields). The broadcast goes to all play room subscribers including the submitter — no exclusion logic."
+        },
+        {
+          "id": "06-02",
+          "name": "US08-01 — Ceremony question arrives in play room",
+          "description": "When the quizmaster shows a ceremony question, the play room receives a ceremony_question_shown event containing the question text.",
+          "criteria": "After the quizmaster shows ceremony question 1, the play room client receives a ceremony_question_shown event. The payload contains the question text.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives the ceremony question when the quizmaster shows it",
+          "files_to_modify": [
+            "internal/handler/host.go"
+          ],
+          "dependencies": ["06-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "The ceremony_question_shown broadcast to RoomPlay was wired in step 01-01. This step unskips the scenario and confirms the handler path. Verify the question payload uses QuestionPublic (no answer field)."
+        },
+        {
+          "id": "06-03",
+          "name": "US08-02 + ADP-03 — Ceremony answer and verdicts arrive (DEP-02)",
+          "description": "When the quizmaster reveals the ceremony answer, the play room receives a ceremony_answer_revealed event with the answer and a verdicts array. Covers US08-02 (real-io) and ADP-03 (adapter integration confirming verdicts array is present).",
+          "criteria": "After the quizmaster reveals the answer for ceremony question 1, the play room receives ceremony_answer_revealed. The payload contains the revealed answer text and a verdicts array. Each verdict entry includes the team name and a boolean correct field. The verdicts list is non-empty when at least one team has submitted.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives the revealed answer and team verdicts during ceremony",
+          "files_to_modify": [
+            "internal/hub/events.go",
+            "internal/handler/host.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["06-02"],
+          "estimated_hours": 2,
+          "implementation_notes": "VerdictsByQuestion() on game.go returns map[teamID]bool. CeremonyAnswerRevealedPayload.Verdicts is []VerdictEntry{TeamName, Correct}. The host handler calls VerdictsByQuestion for the current question index and builds the array before broadcasting to RoomPlay. Wire was done in 01-01; this step unskips the scenario and validates the payload shape."
+        },
+        {
+          "id": "06-04",
+          "name": "US08-03 — Ceremony events for all questions in sequence",
+          "description": "The play room receives ceremony question and answer reveal events for each question in order as the quizmaster progresses through the full ceremony.",
+          "criteria": "After 3 ceremony questions are shown and answered, the play room client has received exactly 3 ceremony_question_shown events and 3 ceremony_answer_revealed events in sequence order.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives ceremony events for each question in sequence",
+          "files_to_modify": [
+            "tests/acceptance/play-ui/steps/step_impls.go"
+          ],
+          "dependencies": ["06-03"],
+          "estimated_hours": 1,
+          "implementation_notes": "No new files to modify — this verifies the sequencing behaviour already established in 06-02 and 06-03. Unskip the scenario and confirm the step implementations count events correctly. Ordering is guaranteed by the single-goroutine broadcast in the hub."
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "name": "Round Scores and Game Over (DEP-04)",
+      "steps": [
+        {
+          "id": "07-01",
+          "name": "US09-01 + ADP-02 — Round scores with team names",
+          "description": "When the quizmaster publishes round scores, the play room receives a round_scores event with a structured list. Each entry contains team_name, round_score, and running_total. Covers US09-01 (real-io) and ADP-02 (adapter integration confirming team_name field present).",
+          "criteria": "After the quizmaster publishes Round 1 scores, the play room receives round_scores. The payload contains a list where each entry has a team_name string field. The list includes entries for all registered teams. Running totals are included.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives round scores with team names when the quizmaster publishes them",
+          "files_to_modify": [
+            "internal/hub/events.go",
+            "internal/handler/host.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["06-03"],
+          "estimated_hours": 2,
+          "implementation_notes": "RoundScoresWithNames() on game.go returns []TeamScore{TeamName, RoundScore, RunningTotal}. RoundScoresPayload is restructured to a typed array (not a map). Host handler builds the array and broadcasts to RoomPlay. Wire was done in 01-01; this step unskips and validates payload structure."
+        },
+        {
+          "id": "07-02",
+          "name": "US09-02 — Final leaderboard with team names at game over",
+          "description": "When the quizmaster ends the game, the play room receives a game_over event with the final leaderboard. Each entry includes the team name and total score.",
+          "criteria": "After the quizmaster ends the game, the play room receives a game_over event. The payload contains a final scores list with team_name and total fields for all teams.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives the final leaderboard with team names at game over",
+          "files_to_modify": [
+            "internal/hub/events.go",
+            "internal/handler/host.go"
+          ],
+          "dependencies": ["07-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "GameOverPayload is restructured to use the same TeamScore typed array as round_scores. Broadcast to RoomPlay in handleEndGame. Reuse RoundScoresWithNames() — at game over it returns the cumulative totals."
+        },
+        {
+          "id": "07-03",
+          "name": "US09-03 — Next round starts from scores screen",
+          "description": "When the quizmaster starts a second round while teams are on the scores screen, the play room receives a round_started notification for Round 2.",
+          "criteria": "After round scores are displayed, when the quizmaster starts Round 2, the play room client receives a round_started event with round_number=2.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Next round starts from the scores screen",
+          "files_to_modify": [
+            "internal/handler/host.go"
+          ],
+          "dependencies": ["07-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Broadcast round_started to RoomPlay in handleStartRound (already done for RoomDisplay). Verify the round_number field is correctly set for Round 2. No state machine change required — the game loop handles multi-round by design."
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "name": "Rejoin, Reconnect, and Snapshot Completeness",
+      "steps": [
+        {
+          "id": "08-01",
+          "name": "US02-01 + US04-01 — Rejoin with draft answers in snapshot",
+          "description": "A player who reconnects with a valid device token receives a state snapshot that includes their previously saved draft answers and shows the game is in round_active state.",
+          "criteria": "After reconnecting with a valid device token, the state snapshot phase=round_active. The snapshot's draft_answers field contains the team's previously saved draft answer for Round 1 question 1.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player rejoins the game and receives their saved draft answers",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["04-04", "03-01"],
+          "estimated_hours": 2,
+          "implementation_notes": "On connect, if the request carries a device_token query param or header, look up the team and treat the connection as a rejoin. Build the snapshot with draft_answers included. The snapshot builder must call a game read method for stored drafts by team_id. Device token must match stored token exactly."
+        },
+        {
+          "id": "08-02",
+          "name": "US02-02 + US08-04 — Rejoin during ceremony routes to ceremony snapshot",
+          "description": "A player reconnecting during the ceremony phase receives a snapshot with phase=ceremony. Covers US02-02 (routing) and US08-04 (ceremony-specific snapshot content).",
+          "criteria": "When the game is in ceremony phase and a player reconnects with a valid token, the state snapshot phase=ceremony. No round_active or lobby phase is indicated.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player rejoins during ceremony and is routed to the ceremony screen",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["08-01", "06-02"],
+          "estimated_hours": 1,
+          "implementation_notes": "The snapshot builder must read the current game phase from the domain model and set phase accordingly. Ceremony snapshot should include the questions revealed so far and any answer reveals completed. Phase mapping: game.PhaseCeremony → 'ceremony' in the JSON payload."
+        },
+        {
+          "id": "08-03",
+          "name": "US02-03 + INF-04 — Bad and malformed token rejection",
+          "description": "A reconnect attempt with an unrecognised device token is rejected with a team-not-found error and no snapshot is sent. Covers US02-03 (unrecognised token) and INF-04 (malformed token that matches no team).",
+          "criteria": "A rejoin message with an unrecognised device token returns a team-not-found error event. No state snapshot is sent following the error. The WebSocket connection remains open for a fresh registration.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player rejoin is rejected when their device token is not recognised",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["08-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Lookup by device token must return a not-found sentinel. Return team_not_found error event. Do not close the connection — the client may still register fresh. INF-04 (malformed token) follows the same code path as a valid-format but unrecognised token."
+        },
+        {
+          "id": "08-04",
+          "name": "US04-02 — No drafts in fresh connection snapshot",
+          "description": "A player who connects for the first time (no device token) receives a snapshot without any draft_answers.",
+          "criteria": "The state snapshot for a fresh (unregistered) connection does not include a draft_answers field, or the field is present and empty.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Draft answers are not included in a fresh connection state snapshot",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["08-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "The snapshot builder path for fresh connects (no device token) must omit draft_answers or set it to an empty map. Confirm the snapshot builder branching between rejoin and fresh paths is explicit and not relying on nil map behaviour."
+        },
+        {
+          "id": "08-05",
+          "name": "US10-01 — Reconnect restores game state with revealed questions",
+          "description": "A player who disconnects and reconnects during an active round receives a snapshot showing all questions revealed before the disconnect.",
+          "criteria": "After reconnecting with a valid device token while 3 questions are revealed, the snapshot contains 3 revealed questions. The snapshot phase=round_active.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player reconnecting receives a state snapshot restoring their game position",
+          "files_to_modify": [
+            "internal/handler/play.go"
+          ],
+          "dependencies": ["08-01", "04-03"],
+          "estimated_hours": 1,
+          "implementation_notes": "The revealed questions list in the snapshot must come from the same game read method used in mid-round join (US03-03, step 04-03). Reconnect and fresh mid-round join follow the same snapshot path for revealed questions; the difference is the presence of draft_answers."
+        },
+        {
+          "id": "08-06",
+          "name": "US10-02 — Reconnect during scores phase receives scores snapshot",
+          "description": "A player reconnecting when the game is at the round scores screen receives a snapshot with phase=round_scores.",
+          "criteria": "When the game is in the round_scores phase and a player reconnects with a valid token, the state snapshot phase=round_scores.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Player reconnecting during scores phase receives a scores-state snapshot",
+          "files_to_modify": [
+            "internal/handler/play.go",
+            "internal/game/game.go"
+          ],
+          "dependencies": ["08-02", "07-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "Add round_scores phase mapping to the snapshot builder. Include the current scores list in the snapshot payload. Reuse RoundScoresWithNames() for snapshot construction. Phase mapping: game.PhaseRoundScores → 'round_scores'."
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "name": "Question Types — Multiple Choice, Multi-Part, Media (DEP-01)",
+      "steps": [
+        {
+          "id": "09-01",
+          "name": "DEP-01 — Add Choices, IsMultiPart, Media to public types",
+          "description": "Extend the domain model to carry structural question metadata through the public boundary. Add Choices []string, IsMultiPart bool, and Media *MediaRef to QuestionPublic. Add MediaRef struct. Update StripAnswers() to copy these fields. Update QuestionFull and quiz schema types. Add boundary tests.",
+          "criteria": "QuestionPublic carries Choices, IsMultiPart, and Media fields. StripAnswers() copies these fields from QuestionFull without exposing Answer or Answers. Boundary tests confirm Answer/Answers are excluded and structural fields are preserved. Schema parser maps YAML choices to []string and media to *yamlMedia.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives a multiple choice question with the choices list",
+          "files_to_modify": [
+            "internal/game/public_types.go",
+            "internal/game/types.go",
+            "internal/game/boundary.go",
+            "internal/game/boundary_test.go",
+            "internal/quiz/schema.go"
+          ],
+          "dependencies": ["04-01"],
+          "estimated_hours": 3,
+          "implementation_notes": "MediaRef struct: {Type string, URL string}. In boundary.go, StripAnswers copies Choices and Media by value/pointer copy — never copies Answer or Answers. In quiz/schema.go, change yamlQuestion.Choices from []interface{} to []string and Media from interface{} to *yamlMedia (with Type and URL fields). boundary_test.go must assert Answer field is nil/empty after strip and that Choices, Media, IsMultiPart survive the strip."
+        },
+        {
+          "id": "09-02",
+          "name": "US11-02 — Text question has no choices field",
+          "description": "Verify that a revealed text question has no choices field or an empty one in the question_revealed payload.",
+          "criteria": "The question_revealed payload for a text question has no choices field or an empty choices array.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Text questions are revealed without a choices list",
+          "files_to_modify": [
+            "tests/acceptance/play-ui/steps/step_impls.go"
+          ],
+          "dependencies": ["09-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "No handler changes required — DEP-01 domain changes in 09-01 flow through via StripAnswers into the question_revealed broadcast. Step implementations need quiz fixture files: mc-quiz.yaml with a 4-choice question and text-only.yaml with plain text questions. Fixtures are test data, not production code."
+        },
+        {
+          "id": "09-03",
+          "name": "US12-01 + US12-02 — Multi-part indicator present and absent",
+          "description": "A revealed multi-part question carries is_multi_part=true; a single-answer question carries is_multi_part=false or omits the field.",
+          "criteria": "US12-01: question_revealed payload for a multi-part question has is_multi_part=true. US12-02: question_revealed payload for a single-answer question has is_multi_part=false or the field is absent.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives a multi-part question with the multi-part indicator",
+          "files_to_modify": [
+            "tests/acceptance/play-ui/steps/step_impls.go"
+          ],
+          "dependencies": ["09-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "No handler changes — DEP-01 covers this field. Fixtures needed: multipart-quiz.yaml with is_multi_part: true on one question, and single-answer.yaml with standard text questions. IsMultiPart bool is a zero-value-safe field — false by default requires no special handling."
+        },
+        {
+          "id": "09-04",
+          "name": "US13-01 + US13-02 — Image question has media; text has none",
+          "description": "A revealed image question carries a media object with type and URL fields. A text question has no media field in the payload.",
+          "criteria": "US13-01: question_revealed payload for an image question contains a media object with non-empty type and url fields. US13-02: question_revealed payload for a text question has no media field or media is null.",
+          "test_file": "tests/acceptance/play-ui/play_ui.feature",
+          "scenario_name": "Play room receives an image question with the media attachment",
+          "files_to_modify": [
+            "tests/acceptance/play-ui/steps/step_impls.go"
+          ],
+          "dependencies": ["09-01"],
+          "estimated_hours": 1,
+          "implementation_notes": "No handler changes — DEP-01 covers MediaRef. Fixtures needed: media-quiz.yaml with a question carrying media.type='image' and media.url set, and no-media.yaml with standard text questions. JSON serialisation of *MediaRef must use omitempty so nil Media omits the field entirely."
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "internal/game",
+      "internal/hub",
+      "internal/handler",
+      "internal/quiz"
+    ],
+    "test_directories": [
+      "tests/acceptance/play-ui",
+      "tests/acceptance/host-ui"
+    ],
+    "excluded_patterns": [
+      "__init__.py",
+      "__pycache__/**"
+    ]
+  },
+  "validation": {
+    "status": "approved",
+    "reviewer": "nw-solution-architect",
+    "approved_at": "2026-04-16T17:51:41Z"
+  }
+}

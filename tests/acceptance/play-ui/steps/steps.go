@@ -88,6 +88,11 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return w.givenRoundEnded(startRound - 1)
 		})
 
+	sc.Step(`^the quizmaster has revealed question (\d+)$`,
+		func(qNum int) error {
+			return w.givenQuizmasterRevealedQuestion(0, qNum-1)
+		})
+
 	sc.Step(`^the quizmaster has revealed all (\d+) questions$`,
 		func(count int) error {
 			return w.givenAllQuestionsRevealed(count)

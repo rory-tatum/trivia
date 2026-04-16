@@ -1,0 +1,391 @@
+{
+  "schema_version": "3.0",
+  "feature_id": "play-ui",
+  "events": [
+    {
+      "sid": "01-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:03:24Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:03:36Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:04:31Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:14:27Z"
+    },
+    {
+      "sid": "01-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:14:48Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:19:07Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:19:11Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: existing helpers (waitForEvent, connectionKey) fully cover step implementation; acceptance test is the definitive test for this adapter integration behavior",
+      "t": "2026-04-16T18:19:17Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:19:20Z"
+    },
+    {
+      "sid": "02-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:19:31Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:06Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:11Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step implementations only \u2014 no new production code",
+      "t": "2026-04-16T18:25:15Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:15Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:15Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step implementations only \u2014 no new production code",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:22Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step implementations only \u2014 no new production code",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step implementations only \u2014 no new production code",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:25:23Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:13Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:13Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: existing helpers cover all domain logic",
+      "t": "2026-04-16T18:32:20Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:20Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:20Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:25Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:25Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:25Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:25Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step impl only, no domain logic to unit test",
+      "t": "2026-04-16T18:32:25Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step impl only, no domain logic to unit test",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-04",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-04",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:26Z"
+    },
+    {
+      "sid": "04-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-04",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step impl only, no domain logic to unit test",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-05",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-05",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-05",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-05",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T18:32:27Z"
+    },
+    {
+      "sid": "04-05",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step impl only, no domain logic to unit test",
+      "t": "2026-04-16T18:32:28Z"
+    }
+  ]
+}

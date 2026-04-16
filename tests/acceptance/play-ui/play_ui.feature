@@ -118,7 +118,7 @@ Feature: Play UI — Player Interface
   # US-03: Question Reveal and Answer Capture
   # ============================================================================
 
-  @skip @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Play room receives the question when the quizmaster reveals it
     Given a quiz file "reveal-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -127,7 +127,7 @@ Feature: Play UI — Player Interface
     Then "Team Awesome" receives the question on their device
     And the question includes the question text
 
-  @skip @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Questions accumulate as the quizmaster reveals them one by one
     Given a quiz file "multi-reveal.yaml" with 1 round of 3 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -137,7 +137,7 @@ Feature: Play UI — Player Interface
     And the quizmaster reveals question 3
     Then "Team Awesome" has received all 3 questions for Round 1
 
-  @skip @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Player joining mid-round receives all previously revealed questions in the state snapshot
     Given a quiz file "mid-round.yaml" with 1 round of 5 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -146,7 +146,7 @@ Feature: Play UI — Player Interface
     And "Quiz Killers" requests a game state snapshot
     Then the snapshot for "Quiz Killers" includes all 4 revealed questions
 
-  @skip @driving_port @real-io @US-03
+  @driving_port @real-io @US-03
   Scenario: Player saves a draft answer to the server for a revealed question
     Given a quiz file "draft-quiz.yaml" with 1 round of 2 text questions
     And the server is running with HOST_TOKEN "pub-night-secret"
@@ -462,7 +462,7 @@ Feature: Play UI — Player Interface
     When "Team Awesome" submits their Round 1 answers again
     Then "Team Awesome" receives an already-submitted error
 
-  @skip @infrastructure-failure @in-memory @US-03
+  @infrastructure-failure @in-memory @US-03
   Scenario: Draft answer sent before a round has started is silently accepted
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And "Team Awesome" is registered in the play room

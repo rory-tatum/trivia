@@ -135,11 +135,77 @@ func (w *World) givenQuizmasterLoadedQuiz(filename string) error {
 }
 
 func (w *World) givenRoundStartedWithTeam(roundIndex int, teamName string) error {
-	return godog.ErrPending
+	// Load the first registered quiz fixture into the server.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	// Connect and register the team in the play room.
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return err
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return err
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not register in givenRoundStartedWithTeam", teamName)
+	}
+	// Start the round via the host port.
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
+		return fmt.Errorf("round_started not received by team %q in givenRoundStartedWithTeam", teamName)
+	}
+	return nil
+}
+
+// loadFirstQuizFixture loads the first registered quiz fixture into the server.
+// It is a no-op if no fixtures are registered or the quiz is already loaded.
+func (w *World) loadFirstQuizFixture() error {
+	if len(w.quizFilePaths) > 0 {
+		return nil // already loaded
+	}
+	if len(w.quizFixtures) == 0 {
+		return fmt.Errorf("no quiz fixture registered — call givenQuizFileExists first")
+	}
+	// Pick the first (and typically only) fixture.
+	var filename string
+	for f := range w.quizFixtures {
+		filename = f
+		break
+	}
+	return w.givenQuizmasterLoadedQuiz(filename)
 }
 
 func (w *World) givenRoundStartedAndQuestionsRevealed(roundIndex, questionCount int) error {
-	return godog.ErrPending
+	// Load the first registered quiz fixture into the server.
+	if err := w.loadFirstQuizFixture(); err != nil {
+		return err
+	}
+	// Start the round via the host port (no team in play room yet).
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
+		return err
+	}
+	// Reveal the required number of questions.
+	for i := 0; i < questionCount; i++ {
+		if err := hd.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
+			return fmt.Errorf("reveal question %d: %w", i, err)
+		}
+		// Brief pause to allow server to process each reveal in sequence.
+		time.Sleep(10 * time.Millisecond)
+	}
+	w.revealedCount = questionCount
+	return nil
 }
 
 func (w *World) givenRoundEndedWithTeam(roundIndex int, teamName string) error {
@@ -148,6 +214,14 @@ func (w *World) givenRoundEndedWithTeam(roundIndex int, teamName string) error {
 
 func (w *World) givenRoundEnded(roundIndex int) error {
 	return godog.ErrPending
+}
+
+func (w *World) givenQuizmasterRevealedQuestion(roundIndex, questionIndex int) error {
+	hd := w.ensureHostDriver()
+	if err := w.ensureHostConnected(hd); err != nil {
+		return err
+	}
+	return hd.HostRevealQuestion(w.ctx, roundIndex, questionIndex)
 }
 
 func (w *World) givenAllQuestionsRevealed(count int) error {
@@ -176,7 +250,21 @@ func (w *World) givenTeamAlreadyRegistered(teamName string) error {
 }
 
 func (w *World) givenTeamRegistered(teamName string) error {
-	return godog.ErrPending
+	if w.server == nil {
+		return fmt.Errorf("server not started — call givenServerRunning first")
+	}
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return err
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return err
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive team_registered in givenTeamRegistered", teamName)
+	}
+	return nil
 }
 
 func (w *World) givenTwoTeamsRegistered(team1, team2 string) error {
@@ -253,7 +341,18 @@ func (w *World) whenTeamRegisters(teamName string) error {
 }
 
 func (w *World) whenTeamConnectsAndRegisters(teamName string) error {
-	return godog.ErrPending
+	d := w.ensurePlayDriver(teamName)
+	if err := w.ensurePlayConnected(d, teamName); err != nil {
+		return err
+	}
+	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		return err
+	}
+	key := connectionKey(rolePlay, teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive team_registered in whenTeamConnectsAndRegisters", teamName)
+	}
+	return nil
 }
 
 func (w *World) whenTeamAttemptsRegistrationFromSecondDevice(teamName string) error {
@@ -534,7 +633,36 @@ func (w *World) thenTeamReceivesQuestion(teamName string) error {
 }
 
 func (w *World) thenQuestionHasText() error {
-	return godog.ErrPending
+	// Observable: the most recently received question_revealed event has a non-empty text field
+	// in the nested question object. Per AC: the question must not include an answer field.
+	for _, msgs := range w.receivedMessages {
+		for _, msg := range msgs {
+			if msg.Event != eventQuestionRevealed {
+				continue
+			}
+			question, _ := msg.Payload["question"].(map[string]interface{})
+			if question == nil {
+				// Fallback: text may be at top level.
+				text, _ := msg.Payload["text"].(string)
+				if text == "" {
+					return fmt.Errorf("question_revealed payload missing text in question object: %v", msg.Payload)
+				}
+				if _, hasAnswer := msg.Payload["answer"]; hasAnswer {
+					return fmt.Errorf("question_revealed payload must not include answer field: %v", msg.Payload)
+				}
+				return nil
+			}
+			text, _ := question["text"].(string)
+			if text == "" {
+				return fmt.Errorf("question_revealed question.text is empty: %v", msg.Payload)
+			}
+			if _, hasAnswer := question["answer"]; hasAnswer {
+				return fmt.Errorf("question_revealed question must not include answer field: %v", msg.Payload)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no question_revealed event received on any connection")
 }
 
 func (w *World) thenTeamReceivesRoundEnded(teamName string) error {
@@ -761,7 +889,23 @@ func (w *World) thenSnapshotShowsRoundScores() error {
 }
 
 func (w *World) thenSnapshotHasRevealedQuestions(teamName string, count int) error {
-	return godog.ErrPending
+	// Observable: the state_snapshot sent to the team (after mid-round join) includes
+	// a revealed_questions array with the expected number of entries.
+	key := connectionKey(rolePlay, teamName)
+	return pollUntil(eventWaitTimeout, 20*time.Millisecond, func() (bool, error) {
+		for _, msg := range w.messagesFor(key) {
+			if msg.Event != eventStateSnapshot {
+				continue
+			}
+			revealed, _ := msg.Payload["revealed_questions"].([]interface{})
+			if len(revealed) >= count {
+				return true, nil
+			}
+			return false, fmt.Errorf("state_snapshot for %q has %d revealed questions, expected %d (payload: %v)",
+				teamName, len(revealed), count, msg.Payload)
+		}
+		return false, fmt.Errorf("no state_snapshot received for team %q", teamName)
+	})
 }
 
 func (w *World) thenSnapshotShowsRevealedQuestions(count int) error {
@@ -857,12 +1001,31 @@ func (w *World) thenNoTeamIdentityIssued() error {
 }
 
 func (w *World) thenNoErrorReturnedToTeam(teamName string) error {
-	return godog.ErrPending
+	// Observable: no error event received on the team's play connection within the window.
+	time.Sleep(negativeEventWindow)
+	key := connectionKey(rolePlay, teamName)
+	for _, msg := range w.messagesFor(key) {
+		if msg.Event == eventError {
+			return fmt.Errorf("unexpected error event received for team %q: %v", teamName, msg.Payload)
+		}
+	}
+	return nil
 }
 
 func (w *World) thenDraftSavedWithoutError() error {
-	// draft_answer is fire-and-forget; assert no error event received.
-	return godog.ErrPending
+	// draft_answer is fire-and-forget; assert no error event received on any play connection.
+	time.Sleep(negativeEventWindow)
+	for key, msgs := range w.receivedMessages {
+		if !strings.HasPrefix(key, rolePlay+":") {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.Event == eventError {
+				return fmt.Errorf("unexpected error event received after draft_answer on %q: %v", key, msg.Payload)
+			}
+		}
+	}
+	return nil
 }
 
 func (w *World) thenQuestionHasChoices(teamName string) error {
