@@ -310,8 +310,8 @@ Feature: Host UI — Quizmaster Panel
     And the ceremony progress shows "Question 1 of 2 shown"
     And the "Reveal Answer" button is now visible
 
-  # @skip @driving_port @real-io @US-05
-  @skip @driving_port @real-io @US-05
+  # @driving_port @real-io @US-05
+  @driving_port @real-io @US-05
   Scenario: Revealing the answer sends it to display only — play room does not receive it
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "ceremony-test.yaml" with 1 round of 2 text questions
