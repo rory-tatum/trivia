@@ -131,7 +131,6 @@ Feature: Infrastructure -- deployment and CI/CD validation
   # DEC-031: go-arch-lint as hard CI gate
   # -----------------------------------------------------------------------
 
-  @skip
   @infrastructure
   Scenario: Package dependency rules pass go-arch-lint validation
     Given the project Go source code is present

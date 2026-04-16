@@ -1,0 +1,58 @@
+version: 2
+allow:
+  depOnAnyVendor: true
+
+exclude:
+  - tests
+  - infra_dockerfile_test.go
+
+excludeFiles:
+  - ".*_test\\.go$"
+
+components:
+  game:
+    in: "internal/game"
+  hub:
+    in: "internal/hub"
+  handler:
+    in: "internal/handler"
+  quiz:
+    in: "internal/quiz"
+  config:
+    in: "config"
+  media:
+    in: "internal/media"
+  static:
+    in: "internal/static"
+  cmd:
+    in: "cmd/server"
+
+deps:
+  game:
+    anyVendorDeps: true
+  hub:
+    mayDependOn:
+      - game
+    anyVendorDeps: true
+  handler:
+    mayDependOn:
+      - game
+      - hub
+      - quiz
+      - config
+      - media
+      - static
+    anyVendorDeps: true
+  quiz:
+    mayDependOn:
+      - game
+    anyVendorDeps: true
+  media:
+    anyVendorDeps: true
+  static:
+    anyVendorDeps: true
+  config:
+    anyVendorDeps: true
+  cmd:
+    anyProjectDeps: true
+    anyVendorDeps: true

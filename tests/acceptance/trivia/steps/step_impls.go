@@ -467,7 +467,8 @@ func (w *World) whenDockerComposeUp() error {
 }
 
 func (w *World) whenGoArchLintRuns() error {
-	cmd := exec.CommandContext(w.ctx, "go-arch-lint", "check")
+	projectRoot := "../../../../"
+	cmd := exec.CommandContext(w.ctx, "go", "run", "github.com/fe3dback/go-arch-lint@latest", "check", "--project-path", projectRoot)
 	out, err := cmd.CombinedOutput()
 	w.quizFixtures["arch_lint_output"] = string(out)
 	if err != nil {
