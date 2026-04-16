@@ -280,19 +280,36 @@ func (w *World) givenScoresPublished(roundIndex int) error {
 }
 
 func (w *World) givenRoundFullyComplete(roundIndex int) error {
+	// Ensure a display connection exists so runCeremony can receive ceremony_question_shown.
+	if w.connections[roleDisplay] == nil {
+		if err := w.givenDisplayConnected(); err != nil {
+			return fmt.Errorf("givenRoundFullyComplete: connecting display: %w", err)
+		}
+	}
+	// State machine: ROUND_ENDED → SCORING (via givenRoundEnded + beginScoringAndWait).
 	if err := w.givenRoundEnded(roundIndex, defaultQuestionCount); err != nil {
 		return err
 	}
 	if err := w.beginScoringAndWait(roundIndex); err != nil {
 		return err
 	}
-	if err := w.givenAllAnswersMarked(roundIndex); err != nil {
+	// Mark all answers while in SCORING state.
+	for teamName, teamID := range w.teamIDs {
+		for qi := 0; qi < defaultQuestionCount; qi++ {
+			if err := w.hostDriver().HostMarkAnswer(w.ctx, teamID, roundIndex, qi, "correct"); err != nil {
+				return fmt.Errorf("marking answer for %s q%d: %w", teamName, qi, err)
+			}
+			if _, ok := w.waitForEvent(roleHost, eventScoreUpdated, eventWaitTimeout); !ok {
+				return fmt.Errorf("score_updated not received after marking %s q%d", teamName, qi)
+			}
+		}
+	}
+	// State machine: SCORING → CEREMONY → ROUND_SCORES.
+	// Ceremony must come before publish.
+	if err := w.runCeremony(defaultQuestionCount); err != nil {
 		return err
 	}
-	if err := w.hostDriver().HostPublishScores(w.ctx, roundIndex); err != nil {
-		return err
-	}
-	return w.runCeremony(defaultQuestionCount)
+	return w.hostDriver().HostPublishScores(w.ctx, roundIndex)
 }
 
 // runCeremony walks through show-question / reveal-answer for each question in order.

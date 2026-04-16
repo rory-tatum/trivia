@@ -339,8 +339,8 @@ Feature: Host UI — Quizmaster Panel
   # US-06: End Game and View Final Leaderboard
   # ============================================================================
 
-  # @skip @driving_port @real-io @US-06
-  @skip @driving_port @real-io @US-06
+  # @driving_port @real-io @US-06
+  @driving_port @real-io @US-06
   Scenario: End Game sends the game-over command and displays the final leaderboard
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "final-game.yaml" with 1 round of 2 text questions
