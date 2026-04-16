@@ -265,6 +265,17 @@ func (w *World) givenScoresPublished(roundIndex int) error {
 	if err := w.givenAllAnswersMarked(roundIndex); err != nil {
 		return err
 	}
+	// State machine requires SCORING → CEREMONY → ROUND_SCORES.
+	// Run ceremony (show+reveal each question) before publishing scores.
+	w.mu.Lock()
+	qCount := w.totalQuestions
+	w.mu.Unlock()
+	if qCount == 0 {
+		qCount = defaultQuestionCount
+	}
+	if err := w.runCeremony(qCount); err != nil {
+		return fmt.Errorf("running ceremony before publish: %w", err)
+	}
 	return w.hostDriver().HostPublishScores(w.ctx, roundIndex)
 }
 
@@ -534,8 +545,12 @@ func (w *World) whenMarcusPublishesScores(roundIndex int) error {
 }
 
 func (w *World) whenMarcusStartsCeremony() error {
-	// Ceremony starts with the first show-question command.
-	return w.hostDriver().HostCeremonyShowQuestion(w.ctx, 0)
+	// "Run Ceremony" is a UI-local phase transition in Host.tsx — no server command is sent.
+	// The server is already in ROUND_SCORES state after host_publish_scores.
+	// The ceremony panel becomes visible locally; questions are shown via host_ceremony_show_question.
+	w.ceremonyStarted = true
+	w.ceremonyQuestionsShown = 0
+	return nil
 }
 
 func (w *World) whenMarcusShowsCeremonyQuestion(questionIndex int) error {
@@ -763,6 +778,20 @@ func (w *World) thenButtonVisible(label string) error {
 	case label == "Reveal Next Question":
 		// "Reveal Next Question" visible when round is active and not all questions revealed.
 		return w.thenRevealButtonVisible()
+
+	case label == "Show Next Question":
+		// "Show Next Question" visible when ceremony is active and questions remain to be shown.
+		if !w.ceremonyStarted {
+			return fmt.Errorf("%q button not visible: ceremony has not started", label)
+		}
+		w.mu.Lock()
+		shown := w.ceremonyQuestionsShown
+		total := w.totalQuestions
+		w.mu.Unlock()
+		if total > 0 && shown >= total {
+			return fmt.Errorf("%q button not visible: all %d ceremony questions already shown", label, total)
+		}
+		return nil
 
 	default:
 		return fmt.Errorf("thenButtonVisible: unrecognised button label %q — add a case for it", label)
@@ -1113,16 +1142,37 @@ func (w *World) thenPublishAcceptedWithoutError() error {
 }
 
 func (w *World) thenCeremonyPanelVisible() error {
-	// Observable: ceremony_question_shown event received (first show_question triggers ceremony).
-	_, ok := w.waitForEvent(roleHost, eventCeremonyQuestionShown, eventWaitTimeout)
-	if !ok {
-		return fmt.Errorf("ceremony_question_shown not received — ceremony panel not visible")
+	// Observable: round_scores_published was received (scores published) and Marcus has
+	// started the ceremony (UI-local flag set by whenMarcusStartsCeremony).
+	// The ceremony panel is rendered client-side after "Run Ceremony" is clicked;
+	// the server observable is the round_scores_published event that enables the button.
+	if !w.hasReceivedEvent(roleHost, eventRoundScoresPublished) {
+		// Wait with timeout in case the event is in-flight.
+		_, ok := w.waitForEvent(roleHost, eventRoundScoresPublished, eventWaitTimeout)
+		if !ok {
+			return fmt.Errorf("round_scores_published not received — ceremony panel cannot be visible")
+		}
+	}
+	if !w.ceremonyStarted {
+		return fmt.Errorf("ceremony not started — Marcus has not clicked 'Run Ceremony'")
 	}
 	return nil
 }
 
 func (w *World) thenCeremonyProgressShows(shown, total int) error {
-	return godog.ErrPending
+	// Observable: ceremonyQuestionsShown matches shown, and quiz question count matches total.
+	// "Question 0 of 2 shown" = ceremony started, 0 questions shown, 2 questions in round.
+	w.mu.Lock()
+	questionsShown := w.ceremonyQuestionsShown
+	roundTotal := w.totalQuestions
+	w.mu.Unlock()
+	if questionsShown != shown {
+		return fmt.Errorf("ceremony progress: expected %d questions shown, got %d", shown, questionsShown)
+	}
+	if roundTotal != total {
+		return fmt.Errorf("ceremony progress: expected total %d questions, got %d", total, roundTotal)
+	}
+	return nil
 }
 
 func (w *World) thenDisplayReceivesQuestion(questionIndex int) error {

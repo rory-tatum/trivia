@@ -284,8 +284,8 @@ Feature: Host UI — Quizmaster Panel
   # US-05: Run Answer Ceremony on Display
   # ============================================================================
 
-  # @skip @driving_port @real-io @US-05
-  @skip @driving_port @real-io @US-05
+  # @driving_port @real-io @US-05
+  @driving_port @real-io @US-05
   Scenario: Ceremony panel appears after publishing round scores
     Given the server is running with HOST_TOKEN "pub-night-secret"
     And a quiz file "ceremony-test.yaml" with 1 round of 2 text questions

@@ -113,6 +113,14 @@ type World struct {
 	// appended in order from question_revealed events.
 	revealedQuestions []string
 
+	// ceremonyStarted is true when Marcus has clicked "Run Ceremony" (UI-local transition).
+	// No server command is sent for this action; it tracks the client-side phase only.
+	ceremonyStarted bool
+
+	// ceremonyQuestionsShown is the count of questions shown to the display during the ceremony.
+	// Incremented when host_ceremony_show_question is sent successfully.
+	ceremonyQuestionsShown int
+
 	// ctx is the base context for this scenario (cancelled in teardown).
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -159,11 +167,13 @@ func newWorld() *World {
 		teamRunningTotals: make(map[string]float64),
 		commandSentCount:  make(map[string]int),
 		connectionStatus:  statusConnecting,
-		currentRoundIndex: -1,
-		currentRoundName:  "",
-		revealedCount:     0,
-		totalQuestions:    0,
-		revealedQuestions: []string{},
+		currentRoundIndex:      -1,
+		currentRoundName:       "",
+		revealedCount:          0,
+		totalQuestions:         0,
+		revealedQuestions:      []string{},
+		ceremonyStarted:        false,
+		ceremonyQuestionsShown: 0,
 		ctx:               ctx,
 		cancel:            cancel,
 	}
