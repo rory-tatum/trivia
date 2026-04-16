@@ -66,6 +66,16 @@ func dialPlay(ctx context.Context, server *httptest.Server) (*websocket.Conn, er
 	return conn, err
 }
 
+// connectedHostDriver returns the host PlayUIDriver, creating and connecting it if needed.
+// It combines ensureHostDriver + ensureHostConnected into a single call.
+func (w *World) connectedHostDriver() (*PlayUIDriver, error) {
+	d := w.ensureHostDriver()
+	if err := w.ensureHostConnected(d); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
 // =============================================================================
 // Given implementations — arrange preconditions
 // =============================================================================
@@ -145,30 +155,20 @@ func (w *World) givenQuizmasterLoadedQuiz(filename string) error {
 }
 
 func (w *World) givenRoundStartedWithTeam(roundIndex int, teamName string) error {
-	// Load the first registered quiz fixture into the server.
 	if err := w.loadFirstQuizFixture(); err != nil {
 		return err
 	}
-	// Connect and register the team in the play room.
-	d := w.ensurePlayDriver(teamName)
-	if err := w.ensurePlayConnected(d, teamName); err != nil {
+	if err := w.connectAndRegisterTeam(teamName); err != nil {
 		return err
 	}
-	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
-		return err
-	}
-	key := connectionKey(rolePlay, teamName)
-	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-		return fmt.Errorf("team %q did not register in givenRoundStartedWithTeam", teamName)
-	}
-	// Start the round via the host port.
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
 		return err
 	}
+	key := connectionKey(rolePlay, teamName)
 	if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
 		return fmt.Errorf("round_started not received by team %q in givenRoundStartedWithTeam", teamName)
 	}
@@ -194,19 +194,16 @@ func (w *World) loadFirstQuizFixture() error {
 }
 
 func (w *World) givenRoundStartedAndQuestionsRevealed(roundIndex, questionCount int) error {
-	// Load the first registered quiz fixture into the server.
 	if err := w.loadFirstQuizFixture(); err != nil {
 		return err
 	}
-	// Start the round via the host port (no team in play room yet).
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
 		return err
 	}
-	// Reveal the required number of questions.
 	for i := 0; i < questionCount; i++ {
 		if err := hd.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
 			return fmt.Errorf("reveal question %d: %w", i, err)
@@ -223,8 +220,8 @@ func (w *World) givenRoundEndedWithTeam(roundIndex int, teamName string) error {
 	if err := w.givenRoundStartedWithTeam(roundIndex, teamName); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostEndRound(w.ctx, roundIndex); err != nil {
@@ -239,12 +236,11 @@ func (w *World) givenRoundEndedWithTeam(roundIndex int, teamName string) error {
 }
 
 func (w *World) givenRoundEnded(roundIndex int) error {
-	// Load the first registered quiz fixture if not already loaded.
 	if err := w.loadFirstQuizFixture(); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
@@ -255,16 +251,16 @@ func (w *World) givenRoundEnded(roundIndex int) error {
 }
 
 func (w *World) givenQuizmasterRevealedQuestion(roundIndex, questionIndex int) error {
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return hd.HostRevealQuestion(w.ctx, roundIndex, questionIndex)
 }
 
 func (w *World) givenAllQuestionsRevealed(count int) error {
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	roundIndex := w.currentRoundIndex
@@ -281,11 +277,9 @@ func (w *World) givenAllQuestionsRevealed(count int) error {
 	return nil
 }
 
-func (w *World) givenTeamAlreadyRegistered(teamName string) error {
-	// Precondition: connect and register the team so the name is taken.
-	if w.server == nil {
-		return fmt.Errorf("server not started")
-	}
+// connectAndRegisterTeam connects a team to the play room and waits for confirmation.
+// It is the shared helper for all Given steps that establish a registered team.
+func (w *World) connectAndRegisterTeam(teamName string) error {
 	d := w.ensurePlayDriver(teamName)
 	if err := w.ensurePlayConnected(d, teamName); err != nil {
 		return err
@@ -293,79 +287,54 @@ func (w *World) givenTeamAlreadyRegistered(teamName string) error {
 	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
 		return err
 	}
-	// Wait for team_registered to confirm the name is now taken.
 	key := connectionKey(rolePlay, teamName)
-	_, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout)
-	if !ok {
-		return fmt.Errorf("team %q did not register successfully in givenTeamAlreadyRegistered", teamName)
+	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
+		return fmt.Errorf("team %q did not receive team_registered", teamName)
 	}
 	return nil
+}
+
+func (w *World) givenTeamAlreadyRegistered(teamName string) error {
+	if w.server == nil {
+		return fmt.Errorf("server not started")
+	}
+	return w.connectAndRegisterTeam(teamName)
 }
 
 func (w *World) givenTeamRegistered(teamName string) error {
 	if w.server == nil {
 		return fmt.Errorf("server not started — call givenServerRunning first")
 	}
-	d := w.ensurePlayDriver(teamName)
-	if err := w.ensurePlayConnected(d, teamName); err != nil {
-		return err
-	}
-	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
-		return err
-	}
-	key := connectionKey(rolePlay, teamName)
-	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-		return fmt.Errorf("team %q did not receive team_registered in givenTeamRegistered", teamName)
-	}
-	return nil
+	return w.connectAndRegisterTeam(teamName)
 }
 
 func (w *World) givenTwoTeamsRegistered(team1, team2 string) error {
 	for _, teamName := range []string{team1, team2} {
-		d := w.ensurePlayDriver(teamName)
-		if err := w.ensurePlayConnected(d, teamName); err != nil {
+		if err := w.connectAndRegisterTeam(teamName); err != nil {
 			return err
-		}
-		if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
-			return err
-		}
-		key := connectionKey(rolePlay, teamName)
-		if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-			return fmt.Errorf("team %q did not register in givenTwoTeamsRegistered", teamName)
 		}
 	}
 	return nil
 }
 
 func (w *World) givenTeamRegisteredAndRoundActiveWithQuestions(teamName string, roundIndex, questionCount int) error {
-	// Ensure quiz is loaded.
 	if err := w.loadFirstQuizFixture(); err != nil {
 		return err
 	}
-	// Connect and register the team in the play room.
-	d := w.ensurePlayDriver(teamName)
-	if err := w.ensurePlayConnected(d, teamName); err != nil {
+	if err := w.connectAndRegisterTeam(teamName); err != nil {
 		return err
 	}
-	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
-		return err
-	}
-	key := connectionKey(rolePlay, teamName)
-	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-		return fmt.Errorf("team %q did not register in givenTeamRegisteredAndRoundActiveWithQuestions", teamName)
-	}
-	// Start the round via the host port.
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
 		return err
 	}
+	key := connectionKey(rolePlay, teamName)
 	if _, ok := w.waitForEvent(key, eventRoundStarted, eventWaitTimeout); !ok {
 		return fmt.Errorf("team %q did not receive round_started", teamName)
 	}
-	// Reveal the requested number of questions.
 	for i := 0; i < questionCount; i++ {
 		if err := hd.HostRevealQuestion(w.ctx, roundIndex, i); err != nil {
 			return fmt.Errorf("reveal question %d: %w", i, err)
@@ -417,8 +386,8 @@ func (w *World) givenTeamSubmittedAndCeremonyStarted(teamName string, roundIndex
 	if err := w.givenTeamSubmitted(teamName, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
@@ -436,8 +405,8 @@ func (w *World) givenTeamSubmittedAndCeremonyAtQuestion(teamName string, roundIn
 	if err := w.givenTeamSubmitted(teamName, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
@@ -470,21 +439,13 @@ func (w *World) givenTwoTeamsCompletedRoundWithScoring(team1, team2 string, roun
 	}
 	// Register both teams in the play room.
 	for _, teamName := range []string{team1, team2} {
-		d := w.ensurePlayDriver(teamName)
-		if err := w.ensurePlayConnected(d, teamName); err != nil {
-			return fmt.Errorf("connect team %q: %w", teamName, err)
-		}
-		if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+		if err := w.connectAndRegisterTeam(teamName); err != nil {
 			return fmt.Errorf("register team %q: %w", teamName, err)
-		}
-		key := connectionKey(rolePlay, teamName)
-		if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-			return fmt.Errorf("team %q did not register", teamName)
 		}
 	}
 	// Start round via host.
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
@@ -546,19 +507,12 @@ func (w *World) givenTeamCompletedRoundWithScoring(teamName string, roundIndex i
 	if err := w.loadFirstQuizFixture(); err != nil {
 		return err
 	}
-	d := w.ensurePlayDriver(teamName)
-	if err := w.ensurePlayConnected(d, teamName); err != nil {
-		return fmt.Errorf("connect team %q: %w", teamName, err)
-	}
-	if err := d.PlayRegisterTeam(w.ctx, teamName); err != nil {
+	if err := w.connectAndRegisterTeam(teamName); err != nil {
 		return fmt.Errorf("register team %q: %w", teamName, err)
 	}
 	key := connectionKey(rolePlay, teamName)
-	if _, ok := w.waitForEvent(key, eventTeamRegistered, eventWaitTimeout); !ok {
-		return fmt.Errorf("team %q did not register", teamName)
-	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostStartRound(w.ctx, roundIndex); err != nil {
@@ -577,7 +531,8 @@ func (w *World) givenTeamCompletedRoundWithScoring(teamName string, roundIndex i
 	for i := 0; i < w.totalQuestions; i++ {
 		answers[i] = map[string]interface{}{"question_index": i, "answer": ""}
 	}
-	if err := d.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers); err != nil {
+	pd := w.ensurePlayDriver(teamName)
+	if err := pd.PlaySubmitAnswers(w.ctx, teamName, roundIndex, answers); err != nil {
 		return err
 	}
 	if _, ok := w.waitForEvent(key, eventSubmissionAck, eventWaitTimeout); !ok {
@@ -605,14 +560,13 @@ func (w *World) givenTwoTeamsRoundCompleteAndScoresPublished(team1, team2 string
 	if err := w.givenTwoTeamsCompletedRoundWithScoring(team1, team2, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
 		return fmt.Errorf("publish scores: %w", err)
 	}
-	// Wait for team1 to receive round_scores_published.
 	key := connectionKey(rolePlay, team1)
 	if _, ok := w.waitForEvent(key, eventRoundScoresPublished, eventWaitTimeout); !ok {
 		return fmt.Errorf("team %q did not receive round_scores_published in setup", team1)
@@ -625,8 +579,8 @@ func (w *World) givenTeamOnScoresScreen(teamName string, roundIndex int) error {
 	if err := w.givenTeamCompletedRoundWithScoring(teamName, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
@@ -666,8 +620,8 @@ func (w *World) givenGameInCeremonyPhase(roundIndex int) error {
 	if err := w.givenTeamSubmitted(setupTeam, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostBeginScoring(w.ctx, roundIndex); err != nil {
@@ -687,8 +641,8 @@ func (w *World) givenGameAtScoresScreen(roundIndex int) error {
 	if err := w.givenTeamCompletedRoundWithScoring(setupTeam, roundIndex); err != nil {
 		return err
 	}
-	hd := w.ensureHostDriver()
-	if err := w.ensureHostConnected(hd); err != nil {
+	hd, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := hd.HostPublishScores(w.ctx, roundIndex); err != nil {
@@ -928,32 +882,32 @@ func (w *World) whenPlayerAttemptsSubmitWithUnknownID() error {
 }
 
 func (w *World) whenQuizmasterStartsRound(roundIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostStartRound(w.ctx, roundIndex)
 }
 
 func (w *World) whenQuizmasterRevealsQuestion(roundIndex, questionIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostRevealQuestion(w.ctx, roundIndex, questionIndex)
 }
 
 func (w *World) whenQuizmasterEndsRound(roundIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostEndRound(w.ctx, roundIndex)
 }
 
 func (w *World) whenQuizmasterShowsCeremonyQuestion(questionIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	// Ceremony requires SCORING state. For the first ceremony question (index 0),
@@ -969,16 +923,16 @@ func (w *World) whenQuizmasterShowsCeremonyQuestion(questionIndex int) error {
 }
 
 func (w *World) whenQuizmasterRevealsCeremonyAnswer(questionIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostCeremonyRevealAnswer(w.ctx, questionIndex)
 }
 
 func (w *World) whenQuizmasterShowsAndRevealsCeremonyQuestion(questionIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	if err := d.HostCeremonyShowQuestion(w.ctx, questionIndex); err != nil {
@@ -988,16 +942,16 @@ func (w *World) whenQuizmasterShowsAndRevealsCeremonyQuestion(questionIndex int)
 }
 
 func (w *World) whenQuizmasterPublishesScores(roundIndex int) error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostPublishScores(w.ctx, roundIndex)
 }
 
 func (w *World) whenQuizmasterEndsGame() error {
-	d := w.ensureHostDriver()
-	if err := w.ensureHostConnected(d); err != nil {
+	d, err := w.connectedHostDriver()
+	if err != nil {
 		return err
 	}
 	return d.HostEndGame(w.ctx)

@@ -58,6 +58,41 @@ func (hh *HostHandler) SetBaseURL(url string) {
 	hh.baseURL = url
 }
 
+// pluralRound returns "round" for a count of 1, "rounds" otherwise.
+func pluralRound(count int) string {
+	if count == 1 {
+		return "round"
+	}
+	return "rounds"
+}
+
+// toHubVerdicts converts a slice of game.TeamVerdict to hub.TeamVerdict.
+func toHubVerdicts(gameVerdicts []game.TeamVerdict) []hub.TeamVerdict {
+	result := make([]hub.TeamVerdict, len(gameVerdicts))
+	for i, v := range gameVerdicts {
+		result[i] = hub.TeamVerdict{TeamID: v.TeamID, TeamName: v.TeamName, Verdict: v.Verdict}
+	}
+	return result
+}
+
+// toHubScoreEntries converts a slice of game.ScoreEntry to hub.ScoreEntry.
+func toHubScoreEntries(gameScores []game.ScoreEntry) []hub.ScoreEntry {
+	result := make([]hub.ScoreEntry, len(gameScores))
+	for i, s := range gameScores {
+		result[i] = hub.ScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, RoundScore: s.RoundScore, RunningTotal: s.RunningTotal}
+	}
+	return result
+}
+
+// toHubFinalScoreEntries converts a slice of game.FinalScoreEntry to hub.FinalScoreEntry.
+func toHubFinalScoreEntries(gameScores []game.FinalScoreEntry) []hub.FinalScoreEntry {
+	result := make([]hub.FinalScoreEntry, len(gameScores))
+	for i, s := range gameScores {
+		result[i] = hub.FinalScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, Total: s.Total}
+	}
+	return result
+}
+
 // broadcastToAll sends evt to the host, play, and display rooms.
 // Errors are silently discarded; individual send failures do not abort delivery.
 func (hh *HostHandler) broadcastToAll(evt interface{}) {
@@ -147,12 +182,8 @@ func (hh *HostHandler) handleLoadQuiz(ctx context.Context, conn *websocket.Conn,
 
 	meta.PlayerURL = hh.baseURL + "/play"
 	meta.DisplayURL = hh.baseURL + "/display"
-	roundWord := "rounds"
-	if meta.RoundCount == 1 {
-		roundWord = "round"
-	}
 	meta.Confirmation = fmt.Sprintf("%s | %d %s | %d questions",
-		meta.Title, meta.RoundCount, roundWord, meta.QuestionCount)
+		meta.Title, meta.RoundCount, pluralRound(meta.RoundCount), meta.QuestionCount)
 	meta.SessionID = session.GetSessionID()
 
 	response := hub.ServerEvent{
@@ -305,11 +336,7 @@ func (hh *HostHandler) handleCeremonyRevealAnswer(_ context.Context, client *hub
 
 	roundIndex := session.CurrentRoundIndex()
 	answer := session.CeremonyAnswer(roundIndex, payload.QuestionIndex)
-	gameVerdicts := session.VerdictsByQuestion(roundIndex, payload.QuestionIndex)
-	verdicts := make([]hub.TeamVerdict, len(gameVerdicts))
-	for i, v := range gameVerdicts {
-		verdicts[i] = hub.TeamVerdict{TeamID: v.TeamID, TeamName: v.TeamName, Verdict: v.Verdict}
-	}
+	verdicts := toHubVerdicts(session.VerdictsByQuestion(roundIndex, payload.QuestionIndex))
 	evt := hub.NewCeremonyAnswerRevealedEvent(payload.QuestionIndex, answer, verdicts)
 	_ = hh.hub.Broadcast(hub.RoomDisplay, evt)
 	_ = hh.hub.Broadcast(hub.RoomPlay, evt)
@@ -325,11 +352,7 @@ func (hh *HostHandler) handlePublishScores(_ context.Context, client *hub.Client
 		_ = hh.hub.Send(client, hub.NewErrorEvent("publish_scores_failed", err.Error()))
 		return
 	}
-	gameScores := session.RoundScoresWithNames(payload.RoundIndex)
-	scores := make([]hub.ScoreEntry, len(gameScores))
-	for i, s := range gameScores {
-		scores[i] = hub.ScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, RoundScore: s.RoundScore, RunningTotal: s.RunningTotal}
-	}
+	scores := toHubScoreEntries(session.RoundScoresWithNames(payload.RoundIndex))
 	evt := hub.NewRoundScoresPublishedEvent(payload.RoundIndex, scores)
 	hh.broadcastToAll(evt)
 }
@@ -339,11 +362,7 @@ func (hh *HostHandler) handleEndGame(_ context.Context, client *hub.Client, sess
 		_ = hh.hub.Send(client, hub.NewErrorEvent("end_game_failed", err.Error()))
 		return
 	}
-	gameFinalScores := session.FinalScoresWithNames()
-	finalScores := make([]hub.FinalScoreEntry, len(gameFinalScores))
-	for i, s := range gameFinalScores {
-		finalScores[i] = hub.FinalScoreEntry{TeamID: s.TeamID, TeamName: s.TeamName, Total: s.Total}
-	}
+	finalScores := toHubFinalScoreEntries(session.FinalScoresWithNames())
 	evt := hub.NewGameOverEvent(finalScores)
 	hh.broadcastToAll(evt)
 }

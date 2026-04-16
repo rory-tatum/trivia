@@ -219,7 +219,6 @@ func (g *GameSession) EndGame() error {
 func (g *GameSession) RegisterTeam(name string) (Team, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	// Reject duplicate names (case-insensitive).
 	nameLower := strings.ToLower(name)
 	for _, t := range g.teams {
 		if strings.ToLower(t.Name) == nameLower {
@@ -238,19 +237,16 @@ func (g *GameSession) RegisterTeam(name string) (Team, error) {
 func (g *GameSession) SubmitAnswers(teamID string, roundIndex int, answers []Submission) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	// Reject unknown team identifiers.
 	if _, ok := g.teams[teamID]; !ok {
 		return fmt.Errorf("unknown team: %s", teamID)
 	}
-	// Reject submissions when no round is active or the round has not ended.
 	if g.state != StateRoundActive && g.state != StateRoundEnded {
 		return fmt.Errorf("no round is currently active")
 	}
-	// Reject submissions for a round index that does not match the current round.
 	if roundIndex != g.currentRound {
 		return fmt.Errorf("round %d is not the current round", roundIndex)
 	}
-	// Already submitted: return a distinct error so the handler can send the right code.
+	// Return a distinct sentinel so the handler can send the right error code.
 	if g.submittedTeams[teamID] {
 		return fmt.Errorf("already_submitted")
 	}
