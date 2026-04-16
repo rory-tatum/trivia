@@ -1,0 +1,5 @@
+unleash:
+  tags: mutation
+  timeout-coefficient: 5
+  threshold:
+    efficacy: 80

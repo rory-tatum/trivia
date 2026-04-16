@@ -736,6 +736,496 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-04-16T18:54:29Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:43Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:49Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: existing helpers cover all step bodies",
+      "t": "2026-04-16T19:00:54Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:54Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:54Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:58Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:58Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:58Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:58Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: existing helpers cover all step bodies",
+      "t": "2026-04-16T19:00:59Z"
+    },
+    {
+      "sid": "07-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:59Z"
+    },
+    {
+      "sid": "07-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:59Z"
+    },
+    {
+      "sid": "07-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:59Z"
+    },
+    {
+      "sid": "07-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:00:59Z"
+    },
+    {
+      "sid": "07-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: existing helpers cover all step bodies",
+      "t": "2026-04-16T19:01:00Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:11:54Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:11:59Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:11:59Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:11:59Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:02Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:08Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:08Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:09Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:09Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:10Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:10Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:10Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:10Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:10Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:11Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:11Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:11Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:11Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:11Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:12Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:12Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:12Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:12Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:12Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:13Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:13Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:13Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:13Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:12:14Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: step_impls_only_no_domain_logic",
+      "t": "2026-04-16T19:12:14Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:18:02Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:18:08Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "RED_UNIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:18:08Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:18:08Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:18:21Z"
+    },
+    {
+      "sid": "09-02",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:19:08Z"
+    },
+    {
+      "sid": "09-02",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:19:08Z"
+    },
+    {
+      "sid": "09-02",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: No new domain logic",
+      "t": "2026-04-16T19:19:12Z"
+    },
+    {
+      "sid": "09-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:19:12Z"
+    },
+    {
+      "sid": "09-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:19:19Z"
+    },
+    {
+      "sid": "09-03",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:20:38Z"
+    },
+    {
+      "sid": "09-03",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:20:38Z"
+    },
+    {
+      "sid": "09-03",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: No new domain logic",
+      "t": "2026-04-16T19:20:38Z"
+    },
+    {
+      "sid": "09-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:20:38Z"
+    },
+    {
+      "sid": "09-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:20:49Z"
+    },
+    {
+      "sid": "09-04",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:21:49Z"
+    },
+    {
+      "sid": "09-04",
+      "p": "RED_ACCEPTANCE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:21:49Z"
+    },
+    {
+      "sid": "09-04",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: No new domain logic",
+      "t": "2026-04-16T19:21:50Z"
+    },
+    {
+      "sid": "09-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:21:50Z"
+    },
+    {
+      "sid": "09-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:21:57Z"
+    },
+    {
+      "sid": "REFACTOR-L1-L4",
+      "p": "PREPARE",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:25:29Z"
+    },
+    {
+      "sid": "REFACTOR-L1-L4",
+      "p": "RED_ACCEPTANCE",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring task, no new acceptance test",
+      "t": "2026-04-16T19:25:31Z"
+    },
+    {
+      "sid": "REFACTOR-L1-L4",
+      "p": "RED_UNIT",
+      "s": "SKIPPED",
+      "d": "NOT_APPLICABLE: refactoring task, no new unit test",
+      "t": "2026-04-16T19:25:36Z"
+    },
+    {
+      "sid": "REFACTOR-L1-L4",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:32:49Z"
+    },
+    {
+      "sid": "REFACTOR-L1-L4",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-04-16T19:32:49Z"
     }
   ]
 }

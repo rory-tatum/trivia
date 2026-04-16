@@ -1,3 +1,5 @@
+//go:build !mutation
+
 // Package steps contains the godog acceptance test suite for the trivia game.
 //
 // Entry point for `go test ./tests/acceptance/trivia/steps/...`
